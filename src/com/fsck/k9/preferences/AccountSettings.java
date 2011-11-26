@@ -89,6 +89,10 @@ public class AccountSettings {
                 R.array.account_settings_vibrate_pattern_values));
         s.put("vibrateTimes", new IntegerResourceSetting(5,
                 R.array.account_settings_vibrate_times_label));
+        
+        // BEGIN YOGU: Spam settings
+        s.put("spamBlacklist", new StringSetting(""));
+        // END YOGU.
 
         SETTINGS = Collections.unmodifiableMap(s);
     }

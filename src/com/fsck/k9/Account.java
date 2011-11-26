@@ -1,6 +1,20 @@
 
 package com.fsck.k9;
 
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Calendar;
+import java.util.Collections;
+import java.util.Date;
+import java.util.HashSet;
+import java.util.LinkedList;
+import java.util.List;
+import java.util.Map;
+import java.util.Random;
+import java.util.Set;
+import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+
 import android.content.Context;
 import android.content.SharedPreferences;
 import android.net.ConnectivityManager;
@@ -9,6 +23,7 @@ import android.util.Log;
 
 import com.fsck.k9.crypto.Apg;
 import com.fsck.k9.crypto.CryptoProvider;
+import com.fsck.k9.helper.StringUtils;
 import com.fsck.k9.helper.Utility;
 import com.fsck.k9.mail.Address;
 import com.fsck.k9.mail.MessagingException;
@@ -17,18 +32,6 @@ import com.fsck.k9.mail.store.LocalStore;
 import com.fsck.k9.mail.store.StorageManager;
 import com.fsck.k9.mail.store.StorageManager.StorageProvider;
 import com.fsck.k9.view.ColorChip;
-
-import java.util.ArrayList;
-import java.util.Arrays;
-import java.util.Calendar;
-import java.util.Collections;
-import java.util.Date;
-import java.util.LinkedList;
-import java.util.List;
-import java.util.Map;
-import java.util.Random;
-import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Account stores all of the settings for a single account defined by the user. It is able to save
@@ -152,6 +155,10 @@ public class Account implements BaseAccount {
     private boolean mCryptoAutoEncrypt;
 
     private CryptoProvider mCryptoProvider = null;
+    
+    // BEGIN YOGU: Spam settings
+    private Set<String> spamBlacklist = new HashSet<String>();
+    // END YOGU.
 
     /**
      * Indicates whether this account is enabled, i.e. ready for use, or not.
@@ -412,6 +419,11 @@ public class Account implements BaseAccount {
         mCryptoAutoSignature = prefs.getBoolean(mUuid + ".cryptoAutoSignature", false);
         mCryptoAutoEncrypt = prefs.getBoolean(mUuid + ".cryptoAutoEncrypt", false);
         mEnabled = prefs.getBoolean(mUuid + ".enabled", true);
+        
+        // BEGIN YOGU: Spam settings
+        String tmp = prefs.getString(mUuid + ".spamBlacklist", "");
+        spamBlacklist = new HashSet<String>(Arrays.asList(tmp.split(";")));
+        // END YOGU.
     }
 
     protected synchronized void delete(Preferences preferences) {
@@ -490,6 +502,11 @@ public class Account implements BaseAccount {
         for (String type : networkTypes) {
             editor.remove(mUuid + ".useCompression." + type);
         }
+        
+        // BEGIN YOGU: spam settings
+        editor.remove(mUuid + ".spamBlacklist");
+        // END YOGU.
+        
         deleteIdentities(preferences.getPreferences(), editor);
         editor.commit();
     }
@@ -665,6 +682,11 @@ public class Account implements BaseAccount {
             }
         }
         saveIdentities(preferences.getPreferences(), editor);
+
+        // BEGIN YOGU: spam settings
+        String tmp = StringUtils.join(spamBlacklist, ";");
+        editor.putString(mUuid + ".spamBlacklist", tmp);
+        // END YOGU.
 
         editor.commit();
 
@@ -1532,5 +1554,9 @@ public class Account implements BaseAccount {
 
     public synchronized void setEnabled(boolean enabled) {
         mEnabled = enabled;
+    }
+    
+    public synchronized Set<String> getSpamBlacklist() {
+        return spamBlacklist;
     }
 }

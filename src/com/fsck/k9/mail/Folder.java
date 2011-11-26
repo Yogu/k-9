@@ -12,8 +12,7 @@ import com.fsck.k9.controller.MessageRetrievalListener;
 public abstract class Folder {
     protected final Account mAccount;
 
-    private String status = null;
-    private long lastChecked = 0;
+    private String status = null;    private long lastChecked = 0;
     private long lastPush = 0;
     public enum OpenMode {
         READ_WRITE, READ_ONLY,

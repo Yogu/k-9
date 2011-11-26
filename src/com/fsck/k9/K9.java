@@ -524,7 +524,6 @@ public class K9 extends Application {
                 // let observers know a fetch occurred
                 K9.this.sendBroadcast(new Intent(K9.Intents.EmailReceived.ACTION_REFRESH_OBSERVER, null));
             }
-
         });
 
         notifyObservers();

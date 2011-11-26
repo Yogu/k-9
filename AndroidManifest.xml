@@ -9,11 +9,7 @@
        android:targetSdkVersion="7"
        />
     <supports-screens
-        android:largeScreens="true"
-        android:normalScreens="true"
-        android:smallScreens="true"
-        android:anyDensity="true"
-    />
+        android:anyDensity="true" android:normalScreens="true" android:largeScreens="true" android:smallScreens="true"/>
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
     <uses-permission android:name="android.permission.READ_CONTACTS"/>
     <uses-permission android:name="android.permission.READ_SYNC_SETTINGS"/>
