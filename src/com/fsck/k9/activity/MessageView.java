@@ -33,6 +33,7 @@ public class MessageView extends K9Activity implements OnClickListener {
     private static final String EXTRA_MESSAGE_REFERENCE = "com.fsck.k9.MessageView_messageReference";
     private static final String EXTRA_MESSAGE_REFERENCES = "com.fsck.k9.MessageView_messageReferences";
     private static final String EXTRA_NEXT = "com.fsck.k9.MessageView_next";
+    private static final String EXTRA_MESSAGE_LIST_EXTRAS = "com.fsck.k9.MessageView_messageListExtras";
     private static final String EXTRA_SCROLL_PERCENTAGE = "com.fsck.k9.MessageView_scrollPercentage";
     private static final String SHOW_PICTURES = "showPictures";
     private static final String STATE_PGP_DATA = "pgpData";
@@ -76,6 +77,14 @@ public class MessageView extends K9Activity implements OnClickListener {
      * dialog is shown.
      */
     private String mDstFolder;
+
+    /**
+     * The extras used to create the {@link MessageList} instance that created this activity. May
+     * be {@code null}.
+     *
+     * @see MessageList#actionHandleFolder(Context, Bundle)
+     */
+    private Bundle mMessageListExtras;
 
     private final class StorageListenerImplementation implements StorageManager.StorageListener {
         @Override
@@ -248,8 +257,9 @@ public class MessageView extends K9Activity implements OnClickListener {
     @Override
     public void onBackPressed() {
         if (K9.manageBack()) {
-            String folder = (mMessage != null) ? mMessage.getFolder().getName() : null;
-            MessageList.actionHandleFolder(this, mAccount, folder);
+            if (mMessageListExtras != null) {
+                MessageList.actionHandleFolder(this, mMessageListExtras);
+            }
             finish();
         } else {
             super.onBackPressed();
@@ -295,21 +305,12 @@ public class MessageView extends K9Activity implements OnClickListener {
         public void fetchingAttachment() {
             showToast(getString(R.string.message_view_fetching_attachment_toast), Toast.LENGTH_SHORT);
         }
-
-
-        public void setHeaders(final Message message, final Account account) {
-            runOnUiThread(new Runnable() {
-                public void run() {
-                    mMessageView.setHeaders(message, account);
-                }
-            });
-        }
-
     }
 
     public static void actionView(Context context, MessageReference messRef,
-            ArrayList<MessageReference> messReferences) {
+            ArrayList<MessageReference> messReferences, Bundle messageListExtras) {
         Intent i = new Intent(context, MessageView.class);
+        i.putExtra(EXTRA_MESSAGE_LIST_EXTRAS, messageListExtras);
         i.putExtra(EXTRA_MESSAGE_REFERENCE, messRef);
         i.putParcelableArrayListExtra(EXTRA_MESSAGE_REFERENCES, messReferences);
         i.setFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP | Intent.FLAG_ACTIVITY_NEW_TASK);
@@ -361,6 +362,8 @@ public class MessageView extends K9Activity implements OnClickListener {
 
         setTitle("");
         final Intent intent = getIntent();
+
+        mMessageListExtras = intent.getParcelableExtra(EXTRA_MESSAGE_LIST_EXTRAS);
 
         Uri uri = intent.getData();
         if (icicle != null) {
@@ -723,14 +726,10 @@ public class MessageView extends K9Activity implements OnClickListener {
 
     private void onFlag() {
         if (mMessage != null) {
-            mController.setFlag(mAccount,
-                                mMessage.getFolder().getName(), new String[] {mMessage.getUid()}, Flag.FLAGGED, !mMessage.isSet(Flag.FLAGGED));
-            try {
-                mMessage.setFlag(Flag.FLAGGED, !mMessage.isSet(Flag.FLAGGED));
-                mMessageView.setHeaders(mMessage, mAccount);
-            } catch (MessagingException me) {
-                Log.e(K9.LOG_TAG, "Could not set flag on local message", me);
-            }
+            boolean newState = !mMessage.isSet(Flag.FLAGGED);
+            mController.setFlag(mAccount, mMessage.getFolder().getName(),
+                    new Message[] { mMessage }, Flag.FLAGGED, newState);
+            mMessageView.setHeaders(mMessage, mAccount);
         }
     }
 
@@ -873,15 +872,11 @@ public class MessageView extends K9Activity implements OnClickListener {
 
     private void onMarkAsUnread() {
         if (mMessage != null) {
-// (Issue 3319)            mController.setFlag(mAccount, mMessageReference.folderName, new String[] { mMessage.getUid() }, Flag.SEEN, false);
-            try {
-                mMessage.setFlag(Flag.SEEN, false);
-                mMessageView.setHeaders(mMessage, mAccount);
-                String subject = mMessage.getSubject();
-                setTitle(subject);
-            } catch (Exception e) {
-                Log.e(K9.LOG_TAG, "Unable to unset SEEN flag on message", e);
-            }
+            mController.setFlag(mAccount, mMessage.getFolder().getName(),
+                    new Message[] { mMessage }, Flag.SEEN, false);
+            mMessageView.setHeaders(mMessage, mAccount);
+            String subject = mMessage.getSubject();
+            setTitle(subject);
         }
     }
 
@@ -1110,12 +1105,28 @@ public class MessageView extends K9Activity implements OnClickListener {
                 return;
             }
             MessageView.this.mMessage = message;
+
+            /*
+             * Clone the message object because the original could be modified by
+             * MessagingController later. This could lead to a ConcurrentModificationException
+             * when that same object is accessed by the UI thread (below).
+             *
+             * See issue 3953
+             *
+             * This is just an ugly hack to get rid of the most pressing problem. A proper way to
+             * fix this is to make Message thread-safe. Or, even better, rewriting the UI code to
+             * access messages via a ContentProvider.
+             *
+             */
+            final Message clonedMessage = message.clone();
+
             runOnUiThread(new Runnable() {
                 public void run() {
-                    if (!message.isSet(Flag.X_DOWNLOADED_FULL) && !message.isSet(Flag.X_DOWNLOADED_PARTIAL)) {
+                    if (!clonedMessage.isSet(Flag.X_DOWNLOADED_FULL) &&
+                            !clonedMessage.isSet(Flag.X_DOWNLOADED_PARTIAL)) {
                         mMessageView.loadBodyFromUrl("file:///android_asset/downloading.html");
                     }
-                    mMessageView.setHeaders(message, account);
+                    mMessageView.setHeaders(clonedMessage, account);
                     mMessageView.setOnFlagListener(new OnClickListener() {
                         @Override
                         public void onClick(View v) {

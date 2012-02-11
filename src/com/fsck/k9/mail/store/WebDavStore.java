@@ -242,9 +242,9 @@ public class WebDavStore extends Store {
             authPath = (authPath != null) ? authPath : "";
             String mailboxPath = extra.get(WebDavStoreSettings.MAILBOX_PATH_KEY);
             mailboxPath = (mailboxPath != null) ? mailboxPath : "";
-            uriPath = path + "|" + authPath + "|" + mailboxPath;
+            uriPath = "/" + path + "|" + authPath + "|" + mailboxPath;
         } else {
-            uriPath = "||";
+            uriPath = "/||";
         }
 
         try {
@@ -261,11 +261,11 @@ public class WebDavStore extends Store {
      *
      * @see WebDavStore#decodeUri(String)
      */
-    private static class WebDavStoreSettings extends ServerSettings {
-        private static final String ALIAS_KEY = "alias";
-        private static final String PATH_KEY = "path";
-        private static final String AUTH_PATH_KEY = "authPath";
-        private static final String MAILBOX_PATH_KEY = "mailboxPath";
+    public static class WebDavStoreSettings extends ServerSettings {
+        public static final String ALIAS_KEY = "alias";
+        public static final String PATH_KEY = "path";
+        public static final String AUTH_PATH_KEY = "authPath";
+        public static final String MAILBOX_PATH_KEY = "mailboxPath";
 
         public final String alias;
         public final String path;
@@ -311,7 +311,6 @@ public class WebDavStore extends Store {
     private String mPath; /* Stores the path for the server */
     private String mAuthPath; /* Stores the path off of the server to post data to for form based authentication */
     private String mMailboxPath; /* Stores the user specified path to the mailbox */
-    private URI mUri; /* Stores the Uniform Resource Indicator with all connection info */
 
     private boolean mSecure;
     private WebDavHttpClient mHttpClient = null;
@@ -2232,7 +2231,6 @@ public class WebDavStore extends Store {
      */
     public class DataSet {
         private HashMap<String, HashMap<String, String>> mData = new HashMap<String, HashMap<String, String>>();
-        // private HashMap<String, String> mLostData = new HashMap<String, String>();
         private StringBuilder mUid = new StringBuilder();
         private HashMap<String, String> mTempData = new HashMap<String, String>();
 
@@ -2250,8 +2248,7 @@ public class WebDavStore extends Store {
 
         public void finish() {
             String uid = mUid.toString();
-            if (!uid.equals("") &&
-                    mTempData != null) {
+            if (uid != null && mTempData != null) {
                 mData.put(uid, mTempData);
             } else if (mTempData != null) {
                 /*

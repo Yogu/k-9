@@ -427,18 +427,24 @@ public class Account implements BaseAccount {
     }
 
     protected synchronized void delete(Preferences preferences) {
+        // Get the list of account UUIDs
         String[] uuids = preferences.getPreferences().getString("accountUuids", "").split(",");
-        String[] newUuids = new String[uuids.length - 1];
-        int i = 0;
+
+        // Create a list of all account UUIDs excluding this account
+        List<String> newUuids = new ArrayList<String>(uuids.length);
         for (String uuid : uuids) {
-            if (uuid.equals(mUuid) == false) {
-                newUuids[i++] = uuid;
+            if (!uuid.equals(mUuid)) {
+                newUuids.add(uuid);
             }
         }
 
-        String accountUuids = Utility.combine(newUuids, ',');
         SharedPreferences.Editor editor = preferences.getPreferences().edit();
-        editor.putString("accountUuids", accountUuids);
+
+        // Only change the 'accountUuids' value if this account's UUID was listed before
+        if (newUuids.size() < uuids.length) {
+            String accountUuids = Utility.combine(newUuids.toArray(), ',');
+            editor.putString("accountUuids", accountUuids);
+        }
 
         editor.remove(mUuid + ".storeUri");
         editor.remove(mUuid + ".localStoreUri");

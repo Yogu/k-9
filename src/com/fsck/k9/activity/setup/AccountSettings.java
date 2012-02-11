@@ -698,11 +698,6 @@ public class AccountSettings extends K9PreferenceActivity {
         }
     }
 
-    @Override
-    public void onResume() {
-        super.onResume();
-    }
-
     private void saveSettings() {
         if (mAccountDefault.isChecked()) {
             Preferences.getPreferences(this).setDefaultAccount(mAccount);
@@ -727,7 +722,7 @@ public class AccountSettings extends K9PreferenceActivity {
         mAccount.setDeletePolicy(Integer.parseInt(mDeletePolicy.getValue()));
         if (mIsExpungeCapable) {
             mAccount.setExpungePolicy(mExpungePolicy.getValue());
-        };
+        }
         mAccount.setSyncRemoteDeletions(mSyncRemoteDeletions.isChecked());
         mAccount.setSaveAllHeaders(mSaveAllHeaders.isChecked());
         mAccount.setSearchableFolders(Account.Searchable.valueOf(mSearchableFolders.getValue()));
@@ -789,7 +784,6 @@ public class AccountSettings extends K9PreferenceActivity {
 
         mAccount.setScrollMessageViewButtons(Account.ScrollButtons.valueOf(mAccountScrollButtons.getValue()));
         mAccount.setShowPictures(Account.ShowPictures.valueOf(mAccountShowPictures.getValue()));
-        mAccount.save(Preferences.getPreferences(this));
        
 	    if (mIsPushCapable) {
 	        boolean needsPushRestart = mAccount.setFolderPushMode(Account.FolderMode.valueOf(mPushMode.getValue()));
@@ -807,6 +801,7 @@ public class AccountSettings extends K9PreferenceActivity {
 	        }
 	    }
         // TODO: refresh folder list here
+        mAccount.save(Preferences.getPreferences(this));
     }
 
     @Override
@@ -822,9 +817,9 @@ public class AccountSettings extends K9PreferenceActivity {
     }
 
     @Override
-    public void onBackPressed() {
+    protected void onPause() {
         saveSettings();
-        super.onBackPressed();
+        super.onPause();
     }
 
     private void onCompositionSettings() {

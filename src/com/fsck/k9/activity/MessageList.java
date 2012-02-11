@@ -52,10 +52,12 @@ import android.widget.Toast;
 
 import com.fsck.k9.Account;
 import com.fsck.k9.AccountStats;
+import com.fsck.k9.BaseAccount;
 import com.fsck.k9.FontSizes;
 import com.fsck.k9.K9;
 import com.fsck.k9.Preferences;
 import com.fsck.k9.R;
+import com.fsck.k9.SearchAccount;
 import com.fsck.k9.SearchSpecification;
 import com.fsck.k9.activity.setup.AccountSettings;
 import com.fsck.k9.activity.setup.FolderSettings;
@@ -70,6 +72,7 @@ import com.fsck.k9.mail.Folder;
 import com.fsck.k9.mail.Message;
 import com.fsck.k9.mail.store.LocalStore;
 import com.fsck.k9.mail.store.LocalStore.LocalFolder;
+import com.fsck.k9.mail.store.LocalStore.LocalMessage;
 import com.fsck.k9.mail.store.StorageManager;
 
 
@@ -218,6 +221,7 @@ public class MessageList
     private static final String EXTRA_FOLDER_NAMES = "folderNames";
     private static final String EXTRA_TITLE = "title";
     private static final String EXTRA_LIST_POSITION = "listPosition";
+    private static final String EXTRA_RETURN_FROM_MESSAGE_VIEW = "returnFromMessageView";
 
     /**
      * Maps a {@link SORT_TYPE} to a {@link Comparator} implementation.
@@ -547,6 +551,36 @@ public class MessageList
         }
     }
 
+    /**
+     * Show the message list that was used to open the {@link MessageView} for a message.
+     *
+     * <p>
+     * <strong>Note:</strong>
+     * The {@link MessageList} instance should still be around and all we do is bring it back to
+     * the front (see the activity flags).<br>
+     * Out of sheer paranoia we also set the extras that were used to create the original
+     * {@code MessageList} instance. Using those, the activity can be recreated in the unlikely
+     * case of it having been killed by the OS.
+     * </p>
+     *
+     * @param context
+     *         The {@link Context} instance to invoke the {@link Context#startActivity(Intent)}
+     *         method on.
+     * @param extras
+     *         The extras used to create the original {@code MessageList} instance.
+     *
+     * @see MessageView#actionView(Context, MessageReference, ArrayList, Bundle)
+     */
+    public static void actionHandleFolder(Context context, Bundle extras) {
+        Intent intent = new Intent(context, MessageList.class);
+        intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+        intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
+        intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+        intent.putExtras(extras);
+        intent.putExtra(EXTRA_RETURN_FROM_MESSAGE_VIEW, true);
+        context.startActivity(intent);
+    }
+
     public static void actionHandleFolder(Context context, Account account, String folder) {
         Intent intent = actionHandleFolderIntent(context, account, folder);
         context.startActivity(intent);
@@ -582,7 +616,11 @@ public class MessageList
         context.startActivity(intent);
     }
 
-    public static void actionHandle(Context context, String title, SearchSpecification searchSpecification) {
+    /**
+     * Creates and returns an intent that opens Unified Inbox or All Messages screen.
+     */
+    public static Intent actionHandleAccountIntent(Context context, String title,
+            SearchSpecification searchSpecification) {
         Intent intent = new Intent(context, MessageList.class);
         intent.putExtra(EXTRA_QUERY, searchSpecification.getQuery());
         if (searchSpecification.getRequiredFlags() != null) {
@@ -598,6 +636,13 @@ public class MessageList
         intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
         intent.addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP);
         intent.addFlags(Intent.FLAG_ACTIVITY_SINGLE_TOP);
+
+        return intent;
+    }
+
+    public static void actionHandle(Context context, String title,
+            SearchSpecification searchSpecification) {
+        Intent intent = actionHandleAccountIntent(context, title, searchSpecification);
         context.startActivity(intent);
     }
 
@@ -633,36 +678,36 @@ public class MessageList
         mTouchView = K9.messageListTouchable();
         mPreviewLines = K9.messageListPreviewLines();
 
-        onNewIntent(getIntent());
+        initializeMessageList(getIntent(), true);
     }
 
     @Override
     public void onNewIntent(Intent intent) {
         setIntent(intent); // onNewIntent doesn't autoset our "internal" intent
+        initializeMessageList(intent, false);
+    }
+
+    private void initializeMessageList(Intent intent, boolean create) {
+        boolean returnFromMessageView = intent.getBooleanExtra(
+                EXTRA_RETURN_FROM_MESSAGE_VIEW, false);
+
+        if (!create && returnFromMessageView) {
+            // We're returning from the MessageView activity with "Manage back button" enabled.
+            // So just leave the activity in the state it was left in.
+            return;
+        }
 
         String accountUuid = intent.getStringExtra(EXTRA_ACCOUNT);
-        Account account = Preferences.getPreferences(this).getAccount(accountUuid);
-        String folderName = intent.getStringExtra(EXTRA_FOLDER);
-        String queryString = intent.getStringExtra(EXTRA_QUERY);
+        mAccount = Preferences.getPreferences(this).getAccount(accountUuid);
 
-        if (account != null && !account.isAvailable(this)) {
+        if (mAccount != null && !mAccount.isAvailable(this)) {
             Log.i(K9.LOG_TAG, "not opening MessageList of unavailable account");
             onAccountUnavailable();
             return;
         }
 
-        if (account != null && account.equals(mAccount) &&
-                folderName != null && folderName.equals(mFolderName) &&
-                ((queryString != null && queryString.equals(mQueryString)) ||
-                        (queryString == null && mQueryString == null))) {
-            // We're likely just returning from the MessageView activity with "Manage back button"
-            // enabled. So just leave the activity in the state it was left in.
-            return;
-        }
-
-        mAccount = account;
-        mFolderName = folderName;
-        mQueryString = queryString;
+        mFolderName = intent.getStringExtra(EXTRA_FOLDER);
+        mQueryString = intent.getStringExtra(EXTRA_QUERY);
 
         String queryFlags = intent.getStringExtra(EXTRA_QUERY_FLAGS);
         if (queryFlags != null) {
@@ -697,6 +742,9 @@ public class MessageList
         if (mFolderName != null) {
             mCurrentFolder = mAdapter.getFolder(mFolderName, mAccount);
         }
+
+        // Hide "Load up to x more" footer for search views
+        mFooterView.setVisibility((mQueryString != null) ? View.GONE : View.VISIBLE);
 
         mController = MessagingController.getInstance(getApplication());
         mListView.setAdapter(mAdapter);
@@ -766,9 +814,17 @@ public class MessageList
         sortDateAscending = mController.isSortAscending(SORT_TYPE.SORT_DATE);
 
         mController.addListener(mAdapter.mListener);
+
+        Account[] accountsWithNotification;
         if (mAccount != null) {
-            mController.notifyAccountCancel(this, mAccount);
-            MessagingController.getInstance(getApplication()).notifyAccountCancel(this, mAccount);
+            accountsWithNotification = new Account[] { mAccount };
+        } else {
+            Preferences preferences = Preferences.getPreferences(this);
+            accountsWithNotification = preferences.getAccounts();
+        }
+
+        for (Account accountWithNotification : accountsWithNotification) {
+            mController.notifyAccountCancel(this, accountWithNotification);
         }
 
         if (mAdapter.messages.isEmpty()) {
@@ -1078,7 +1134,7 @@ public class MessageList
             MessageReference ref = message.message.makeMessageReference();
             Log.i(K9.LOG_TAG, "MessageList sending message " + ref);
 
-            MessageView.actionView(this, ref, messageRefs);
+            MessageView.actionView(this, ref, messageRefs, getIntent().getExtras());
         }
 
         /*
@@ -1342,13 +1398,21 @@ public class MessageList
     }
 
     private void onToggleRead(MessageInfoHolder holder) {
-        mController.setFlag(holder.message.getFolder().getAccount(), holder.message.getFolder().getName(), new String[] { holder.uid }, Flag.SEEN, !holder.read);
+        LocalMessage message = holder.message;
+        Folder folder = message.getFolder();
+        Account account = folder.getAccount();
+        String folderName = folder.getName();
+        mController.setFlag(account, folderName, new Message[] { message }, Flag.SEEN, !holder.read);
         holder.read = !holder.read;
         mHandler.sortMessages();
     }
 
     private void onToggleFlag(MessageInfoHolder holder) {
-        mController.setFlag(holder.message.getFolder().getAccount(), holder.message.getFolder().getName(), new String[] { holder.uid }, Flag.FLAGGED, !holder.flagged);
+        LocalMessage message = holder.message;
+        Folder folder = message.getFolder();
+        Account account = folder.getAccount();
+        String folderName = folder.getName();
+        mController.setFlag(account, folderName, new Message[] { message }, Flag.FLAGGED, !holder.flagged);
         holder.flagged = !holder.flagged;
         mHandler.sortMessages();
     }
@@ -2135,15 +2199,15 @@ public class MessageList
                 if (holder.selected != null) {
                     holder.selected.setOnCheckedChangeListener(holder);
                 }
-                holder.subject.setTextSize(TypedValue.COMPLEX_UNIT_DIP, mFontSizes.getMessageListSubject());
-                holder.date.setTextSize(TypedValue.COMPLEX_UNIT_DIP, mFontSizes.getMessageListDate());
+                holder.subject.setTextSize(TypedValue.COMPLEX_UNIT_SP, mFontSizes.getMessageListSubject());
+                holder.date.setTextSize(TypedValue.COMPLEX_UNIT_SP, mFontSizes.getMessageListDate());
 
                 if (mTouchView) {
                     holder.preview.setLines(mPreviewLines);
-                    holder.preview.setTextSize(TypedValue.COMPLEX_UNIT_DIP, mFontSizes.getMessageListPreview());
+                    holder.preview.setTextSize(TypedValue.COMPLEX_UNIT_SP, mFontSizes.getMessageListPreview());
 
                 } else {
-                    holder.from.setTextSize(TypedValue.COMPLEX_UNIT_DIP, mFontSizes.getMessageListSender());
+                    holder.from.setTextSize(TypedValue.COMPLEX_UNIT_SP, mFontSizes.getMessageListSender());
                 }
 
                 view.setTag(holder);
@@ -2351,9 +2415,6 @@ public class MessageList
     private View getFooterView(ViewGroup parent) {
         if (mFooterView == null) {
             mFooterView = mInflater.inflate(R.layout.message_list_item_footer, parent, false);
-            if (mQueryString != null) {
-                mFooterView.setVisibility(View.GONE);
-            }
             mFooterView.setId(R.layout.message_list_item_footer);
             FooterViewHolder holder = new FooterViewHolder();
             holder.progress = (ProgressBar) mFooterView.findViewById(R.id.message_list_progress);

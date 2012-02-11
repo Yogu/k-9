@@ -3,11 +3,14 @@ package com.fsck.k9.activity;
 import android.app.AlertDialog;
 import android.app.Dialog;
 import android.content.Context;
+import android.content.DialogInterface;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.PowerManager;
+import android.text.Editable;
+import android.text.TextWatcher;
 import android.util.Config;
 import android.util.Log;
 import android.util.TypedValue;
@@ -151,7 +154,6 @@ public class FolderList extends K9ListActivity {
             });
         }
     }
-
 
     /**
     * This class is responsible for reloading the list of local messages for a
@@ -422,6 +424,51 @@ public class FolderList extends K9ListActivity {
 
     }
 
+    /**
+     * Show an alert with an input-field for a filter-expression.
+     * Filter {@link #mAdapter} with the user-input.
+     */
+    private void onEnterFilter() {
+        final AlertDialog.Builder filterAlert = new AlertDialog.Builder(this);
+
+        final EditText input = new EditText(this);
+        input.addTextChangedListener(new TextWatcher() {
+
+            @Override
+            public void onTextChanged(CharSequence s, int start, int before, int count) {
+                mAdapter.getFilter().filter(input.getText().toString());
+            }
+
+            @Override
+            public void beforeTextChanged(CharSequence s, int start, int count,
+                    int after) {
+            }
+
+            @Override
+            public void afterTextChanged(Editable s) {
+            }
+        });
+        input.setHint(R.string.folder_list_filter_hint);
+        filterAlert.setView(input);
+
+        filterAlert.setPositiveButton("Ok", new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int whichButton) {
+                String value = input.getText().toString().trim();
+                mAdapter.getFilter().filter(value);
+            }
+        });
+
+        filterAlert.setNegativeButton("Cancel",
+                new DialogInterface.OnClickListener() {
+            public void onClick(DialogInterface dialog, int whichButton) {
+                mAdapter.getFilter().filter("");
+            }
+        });
+
+        filterAlert.show();
+
+    }
+
     private void onEditPrefs() {
         Prefs.actionPrefs(this);
     }
@@ -501,6 +548,11 @@ public class FolderList extends K9ListActivity {
 
         case R.id.list_folders:
             onRefresh(REFRESH_REMOTE);
+
+            return true;
+
+        case R.id.filter_folders:
+            onEnterFilter();
 
             return true;
 
@@ -1095,8 +1147,8 @@ public class FolderList extends K9ListActivity {
             holder.chip.setBackgroundDrawable(mAccount.generateColorChip().drawable());
             holder.chip.getBackground().setAlpha(folder.unreadMessageCount == 0 ? 127 : 255);
 
-            holder.folderName.setTextSize(TypedValue.COMPLEX_UNIT_DIP, mFontSizes.getFolderName());
-            holder.folderStatus.setTextSize(TypedValue.COMPLEX_UNIT_DIP, mFontSizes.getFolderStatus());
+            holder.folderName.setTextSize(TypedValue.COMPLEX_UNIT_SP, mFontSizes.getFolderName());
+            holder.folderStatus.setTextSize(TypedValue.COMPLEX_UNIT_SP, mFontSizes.getFolderStatus());
 
 
             return view;

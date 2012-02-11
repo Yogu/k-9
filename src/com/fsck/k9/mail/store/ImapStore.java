@@ -9,6 +9,7 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.io.UnsupportedEncodingException;
 import java.net.ConnectException;
+import java.net.InetAddress;
 import java.net.InetSocketAddress;
 import java.net.Socket;
 import java.net.SocketAddress;
@@ -156,6 +157,7 @@ public class ImapStore extends Store {
         String username = null;
         String password = null;
         String pathPrefix = null;
+        boolean autoDetectNamespace = true;
 
         URI imapUri;
         try {
@@ -215,15 +217,25 @@ public class ImapStore extends Store {
         }
 
         String path = imapUri.getPath();
-        if (path != null && path.length() > 0) {
-            pathPrefix = path.substring(1);
-            if (pathPrefix != null && pathPrefix.trim().length() == 0) {
-                pathPrefix = null;
+        if (path != null && path.length() > 1) {
+            // Strip off the leading "/"
+            String cleanPath = path.substring(1);
+
+            if (cleanPath.length() >= 2 && cleanPath.charAt(1) == '|') {
+                autoDetectNamespace = cleanPath.charAt(0) == '1';
+                if (!autoDetectNamespace) {
+                    pathPrefix = cleanPath.substring(2);
+                }
+            } else {
+                if (cleanPath.length() > 0) {
+                    pathPrefix = cleanPath;
+                    autoDetectNamespace = false;
+                }
             }
         }
 
         return new ImapStoreSettings(host, port, connectionSecurity, authenticationType, username,
-                password, pathPrefix);
+                password, autoDetectNamespace, pathPrefix);
     }
 
     /**
@@ -280,9 +292,19 @@ public class ImapStore extends Store {
         String userInfo = authType.toString() + ":" + userEnc + ":" + passwordEnc;
         try {
             Map<String, String> extra = server.getExtra();
-            String prefix = (extra != null) ? extra.get(ImapStoreSettings.PATH_PREFIX_KEY) : null;
+            String path = null;
+            if (extra != null) {
+                boolean autoDetectNamespace = Boolean.TRUE.toString().equals(
+                        extra.get(ImapStoreSettings.AUTODETECT_NAMESPACE_KEY));
+                String pathPrefix = (autoDetectNamespace) ?
+                        null : extra.get(ImapStoreSettings.PATH_PREFIX_KEY);
+                path = "/" + (autoDetectNamespace ? "1" : "0") + "|" +
+                    ((pathPrefix == null) ? "" : pathPrefix);
+            } else {
+                path = "/1|";
+            }
             return new URI(scheme, userInfo, server.host, server.port,
-                prefix,
+                path,
                 null, null).toString();
         } catch (URISyntaxException e) {
             throw new IllegalArgumentException("Can't create ImapStore URI", e);
@@ -294,21 +316,26 @@ public class ImapStore extends Store {
      *
      * @see ImapStore#decodeUri(String)
      */
-    private static class ImapStoreSettings extends ServerSettings {
-        private static final String PATH_PREFIX_KEY = "pathPrefix";
+    public static class ImapStoreSettings extends ServerSettings {
+        public static final String AUTODETECT_NAMESPACE_KEY = "autoDetectNamespace";
+        public static final String PATH_PREFIX_KEY = "pathPrefix";
 
+        public final boolean autoDetectNamespace;
         public final String pathPrefix;
 
         protected ImapStoreSettings(String host, int port, ConnectionSecurity connectionSecurity,
-                String authenticationType, String username, String password, String pathPrefix) {
+                String authenticationType, String username, String password,
+                boolean autodetectNamespace, String pathPrefix) {
             super(STORE_TYPE, host, port, connectionSecurity, authenticationType, username,
                     password);
+            this.autoDetectNamespace = autodetectNamespace;
             this.pathPrefix = pathPrefix;
         }
 
         @Override
         public Map<String, String> getExtra() {
             Map<String, String> extra = new HashMap<String, String>();
+            extra.put(AUTODETECT_NAMESPACE_KEY, Boolean.valueOf(autoDetectNamespace).toString());
             putIfNotNull(extra, PATH_PREFIX_KEY, pathPrefix);
             return extra;
         }
@@ -316,7 +343,7 @@ public class ImapStore extends Store {
         @Override
         public ServerSettings newPassword(String newPassword) {
             return new ImapStoreSettings(host, port, connectionSecurity, authenticationType,
-                    username, newPassword, pathPrefix);
+                    username, newPassword, autoDetectNamespace, pathPrefix);
         }
     }
 
@@ -453,7 +480,8 @@ public class ImapStore extends Store {
         mUsername = settings.username;
         mPassword = settings.password;
 
-        mPathPrefix = settings.pathPrefix;
+        // Make extra sure mPathPrefix is null if "auto-detect namespace" is configured
+        mPathPrefix = (settings.autoDetectNamespace) ? null : settings.pathPrefix;
 
         mModifiedUtf7Charset = new CharsetProvider().charsetForName("X-RFC-3501");
     }
@@ -961,7 +989,8 @@ public class ImapStore extends Store {
                 return true;
             } catch (IOException ioe) {
                 throw ioExceptionHandler(mConnection, ioe);
-            } catch (MessagingException me) {
+            } catch (ImapException ie) {
+                // We got a response, but it was not "OK"
                 return false;
             }
         }
@@ -989,7 +1018,8 @@ public class ImapStore extends Store {
                                                 encodeString(encodeFolderName(getPrefixedName()))));
                 mExists = true;
                 return true;
-            } catch (MessagingException me) {
+            } catch (ImapException ie) {
+                // We got a response, but it was not "OK"
                 return false;
             } catch (IOException ioe) {
                 throw ioExceptionHandler(connection, ioe);
@@ -1019,7 +1049,8 @@ public class ImapStore extends Store {
                 connection.executeSimpleCommand(String.format("CREATE %s",
                                                 encodeString(encodeFolderName(getPrefixedName()))));
                 return true;
-            } catch (MessagingException me) {
+            } catch (ImapException ie) {
+                // We got a response, but it was not "OK"
                 return false;
             } catch (IOException ioe) {
                 throw ioExceptionHandler(mConnection, ioe);
@@ -1332,8 +1363,8 @@ public class ImapStore extends Store {
             if (fp.contains(FetchProfile.Item.ENVELOPE)) {
                 fetchFields.add("INTERNALDATE");
                 fetchFields.add("RFC822.SIZE");
-                fetchFields.add("BODY.PEEK[HEADER.FIELDS (date subject from content-type to cc reply-to "
-                                + K9.IDENTITY_HEADER + ")]");
+                fetchFields.add("BODY.PEEK[HEADER.FIELDS (date subject from content-type to cc " +
+                        "reply-to message-id " + K9.IDENTITY_HEADER + ")]");
             }
             if (fp.contains(FetchProfile.Item.STRUCTURE)) {
                 fetchFields.add("BODYSTRUCTURE");
@@ -1422,8 +1453,6 @@ public class ImapStore extends Store {
                             handleUntaggedResponse(response);
                         }
 
-                        while (response.more());
-
                     } while (response.mTag == null);
                 } catch (IOException ioe) {
                     throw ioExceptionHandler(mConnection, ioe);
@@ -1506,8 +1535,6 @@ public class ImapStore extends Store {
                     } else {
                         handleUntaggedResponse(response);
                     }
-
-                    while (response.more());
 
                 } while (response.mTag == null);
             } catch (IOException ioe) {
@@ -1849,7 +1876,6 @@ public class ImapStore extends Store {
                             eolOut.write('\n');
                             eolOut.flush();
                         }
-                        while (response.more());
                     } while (response.mTag == null);
 
                     String newUid = getUidFromMessageId(message);
@@ -2102,27 +2128,44 @@ public class ImapStore extends Store {
                 Log.w(K9.LOG_TAG, "Could not set DNS negative ttl to 0 for " + getLogId(), e);
             }
 
-
-
             try {
+                int connectionSecurity = mSettings.getConnectionSecurity();
 
-                SocketAddress socketAddress = new InetSocketAddress(mSettings.getHost(), mSettings.getPort());
+                // Try all IPv4 and IPv6 addresses of the host
+                InetAddress[] addresses = InetAddress.getAllByName(mSettings.getHost());
+                for (int i = 0; i < addresses.length; i++) {
+                    try {
+                        if (K9.DEBUG && K9.DEBUG_PROTOCOL_IMAP) {
+                            Log.d(K9.LOG_TAG, "Connecting to " + mSettings.getHost() + " as " +
+                                    addresses[i]);
+                        }
 
-                if (K9.DEBUG)
-                    Log.i(K9.LOG_TAG, "Connection " + getLogId() + " connecting to " + mSettings.getHost() + " @ IP addr " + socketAddress);
+                        SocketAddress socketAddress = new InetSocketAddress(addresses[i],
+                                mSettings.getPort());
 
-                if (mSettings.getConnectionSecurity() == CONNECTION_SECURITY_SSL_REQUIRED ||
-                        mSettings.getConnectionSecurity() == CONNECTION_SECURITY_SSL_OPTIONAL) {
-                    SSLContext sslContext = SSLContext.getInstance("TLS");
-                    final boolean secure = mSettings.getConnectionSecurity() == CONNECTION_SECURITY_SSL_REQUIRED;
-                    sslContext.init(null, new TrustManager[] {
-                                        TrustManagerFactory.get(mSettings.getHost(), secure)
-                                    }, new SecureRandom());
-                    mSocket = sslContext.getSocketFactory().createSocket();
-                    mSocket.connect(socketAddress, SOCKET_CONNECT_TIMEOUT);
-                } else {
-                    mSocket = new Socket();
-                    mSocket.connect(socketAddress, SOCKET_CONNECT_TIMEOUT);
+                        if (connectionSecurity == CONNECTION_SECURITY_SSL_REQUIRED ||
+                                connectionSecurity == CONNECTION_SECURITY_SSL_OPTIONAL) {
+                            SSLContext sslContext = SSLContext.getInstance("TLS");
+                            boolean secure = connectionSecurity == CONNECTION_SECURITY_SSL_REQUIRED;
+                            sslContext.init(null, new TrustManager[] {
+                                                TrustManagerFactory.get(mSettings.getHost(), secure)
+                                            }, new SecureRandom());
+                            mSocket = sslContext.getSocketFactory().createSocket();
+                        } else {
+                            mSocket = new Socket();
+                        }
+
+                        mSocket.connect(socketAddress, SOCKET_CONNECT_TIMEOUT);
+
+                        // Successfully connected to the server; don't try any other addresses
+                        break;
+                    } catch (SocketException e) {
+                        if (i < (addresses.length - 1)) {
+                            // There are still other addresses for that host to try
+                            continue;
+                        }
+                        throw new MessagingException("Cannot connect to host", e);
+                    }
                 }
 
                 setReadTimeout(Store.SOCKET_READ_TIMEOUT);
