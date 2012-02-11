@@ -669,6 +669,10 @@ Willkommen zum \"K-9 Mail\"-Setup. K-9 ist eine quelloffene E-Mail-Anwendung fü
 
     <string name="account_settings_sync_remote_deletetions_label">Übernehme Löschungen vom Server</string>
     <string name="account_settings_sync_remote_deletetions_summary">Lösche Nachrichten wenn sie am Server gelöscht werden</string>
+    
+    <string name="account_settings_spam">Spam-Filter</string>
+    <string name="account_settings_spam_blacklist_label">Blacklist</string>
+    <string name="account_settings_spam_blacklist_summary">Jede Spam-Adresse in eine Zeile</string>
 
     <string name="folder_settings_title">Ordner-Einstellungen</string>
 

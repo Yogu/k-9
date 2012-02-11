@@ -1494,6 +1494,16 @@ public class Account implements BaseAccount {
     public boolean getCryptoAutoSignature() {
         return mCryptoAutoSignature;
     }
+    
+    // BEGIN EDIT by YOGU
+    public String getSpamBlacklistAsString() {
+      return StringUtils.join(spamBlacklist, "\n");
+    }
+
+    public void setSpamBlacklistAsString(String str) {
+      spamBlacklist = new HashSet<String>(Arrays.asList(str.split("\n")));
+    }
+    // END EDIT by YOGU
 
     public void setCryptoAutoSignature(boolean cryptoAutoSignature) {
         mCryptoAutoSignature = cryptoAutoSignature;

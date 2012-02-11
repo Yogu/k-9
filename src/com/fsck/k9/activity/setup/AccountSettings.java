@@ -97,6 +97,7 @@ public class AccountSettings extends K9PreferenceActivity {
     private static final String PREFERENCE_CRYPTO_APP = "crypto_app";
     private static final String PREFERENCE_CRYPTO_AUTO_SIGNATURE = "crypto_auto_signature";
     private static final String PREFERENCE_CRYPTO_AUTO_ENCRYPT = "crypto_auto_encrypt";
+    private static final String PREFERENCE_SPAM_BLACKLIST = "spam_blacklist";
 
     private static final String PREFERENCE_LOCAL_STORAGE_PROVIDER = "local_storage_provider";
 
@@ -162,6 +163,7 @@ public class AccountSettings extends K9PreferenceActivity {
     private ListPreference mCryptoApp;
     private CheckBoxPreference mCryptoAutoSignature;
     private CheckBoxPreference mCryptoAutoEncrypt;
+    private EditTextPreference mSpamBlacklist;
 
     private ListPreference mLocalStorageProvider;
 
@@ -685,6 +687,9 @@ public class AccountSettings extends K9PreferenceActivity {
         mCryptoAutoEncrypt = (CheckBoxPreference) findPreference(PREFERENCE_CRYPTO_AUTO_ENCRYPT);
         mCryptoAutoEncrypt.setChecked(mAccount.isCryptoAutoEncrypt());
 
+        mSpamBlacklist = (EditTextPreference) findPreference(PREFERENCE_SPAM_BLACKLIST);
+        mSpamBlacklist.setText(mAccount.getSpamBlacklistAsString());
+
         handleCryptoAppDependencies();
     }
 
@@ -736,6 +741,7 @@ public class AccountSettings extends K9PreferenceActivity {
         mAccount.setCryptoApp(mCryptoApp.getValue());
         mAccount.setCryptoAutoSignature(mCryptoAutoSignature.isChecked());
         mAccount.setCryptoAutoEncrypt(mCryptoAutoEncrypt.isChecked());
+        mAccount.setSpamBlacklistAsString(mSpamBlacklist.getText());
         mAccount.setLocalStorageProviderId(mLocalStorageProvider.getValue());
 
         // In webdav account we use the exact folder name also for inbox,
