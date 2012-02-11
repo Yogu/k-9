@@ -3402,7 +3402,8 @@ public class MessagingController implements Runnable {
     private boolean isSpamMessage(Message message) {
         Set<String> spamBlacklist = message.getFolder().getAccount().getSpamBlacklist();
         for (Address address : message.getFrom()) {
-            if (spamBlacklist.contains(address.getAddress())) {
+            if ((address.getAddress() != null) && !("".equals(address.getAddress()))
+            		&& spamBlacklist.contains(address.getAddress().toLowerCase())) {
                 return true;
             }
         }
