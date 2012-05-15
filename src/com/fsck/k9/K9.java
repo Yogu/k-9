@@ -4,6 +4,7 @@ package com.fsck.k9;
 import java.io.File;
 import java.lang.reflect.Method;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.SynchronousQueue;
@@ -24,6 +25,7 @@ import android.os.Looper;
 import android.text.format.Time;
 import android.util.Log;
 
+import com.fsck.k9.Account.SortType;
 import com.fsck.k9.activity.MessageCompose;
 import com.fsck.k9.controller.MessagingController;
 import com.fsck.k9.controller.MessagingListener;
@@ -31,12 +33,16 @@ import com.fsck.k9.mail.Address;
 import com.fsck.k9.mail.Message;
 import com.fsck.k9.mail.MessagingException;
 import com.fsck.k9.mail.internet.BinaryTempFileBody;
+import com.fsck.k9.provider.UnreadWidgetProvider;
 import com.fsck.k9.service.BootReceiver;
 import com.fsck.k9.service.MailService;
 import com.fsck.k9.service.ShutdownReceiver;
 import com.fsck.k9.service.StorageGoneReceiver;
 
 public class K9 extends Application {
+    public static final int THEME_LIGHT = 0;
+    public static final int THEME_DARK = 1;
+
     /**
      * Components that are interested in knowing when the K9 instance is
      * available and ready (Android invokes Application.onCreate() after other
@@ -71,7 +77,7 @@ public class K9 extends Application {
     }
 
     private static String language = "";
-    private static int theme = android.R.style.Theme_Light;
+    private static int theme = THEME_LIGHT;
 
     private static final FontSizes fontSizes = new FontSizes();
 
@@ -180,10 +186,18 @@ public class K9 extends Application {
     private static boolean compactLayouts = false;
     private static String mAttachmentDefaultPath = "";
 
-
+    private static boolean mBatchButtonsMarkRead = true;
+    private static boolean mBatchButtonsDelete = true;
+    private static boolean mBatchButtonsArchive = false;
+    private static boolean mBatchButtonsMove = false;
+    private static boolean mBatchButtonsFlag = true;
+    private static boolean mBatchButtonsUnselect = true;
+    
     private static boolean useGalleryBugWorkaround = false;
     private static boolean galleryBuggy;
 
+    private static SortType mSortType;
+    private static HashMap<SortType, Boolean> mSortAscending = new HashMap<SortType, Boolean>();
 
     /**
      * The MIME type(s) of attachments we're willing to view.
@@ -432,6 +446,13 @@ public class K9 extends Application {
         editor.putBoolean("messageViewReturnToList", mMessageViewReturnToList);
         editor.putBoolean("messageViewShowNext", mMessageViewShowNext);
 
+        editor.putBoolean("batchButtonsMarkRead", mBatchButtonsMarkRead);
+        editor.putBoolean("batchButtonsDelete", mBatchButtonsDelete);
+        editor.putBoolean("batchButtonsArchive", mBatchButtonsArchive);
+        editor.putBoolean("batchButtonsMove", mBatchButtonsMove);
+        editor.putBoolean("batchButtonsFlag", mBatchButtonsFlag);
+        editor.putBoolean("batchButtonsUnselect", mBatchButtonsUnselect);
+        
         editor.putString("language", language);
         editor.putInt("theme", theme);
         editor.putBoolean("useGalleryBugWorkaround", useGalleryBugWorkaround);
@@ -454,6 +475,8 @@ public class K9 extends Application {
         super.onCreate();
         app = this;
 
+        mSortType = Account.DEFAULT_SORT_TYPE;
+        mSortAscending.put(Account.DEFAULT_SORT_TYPE, Account.DEFAULT_SORT_ASCENDING);
 
         galleryBuggy = checkForBuggyGallery();
 
@@ -504,19 +527,38 @@ public class K9 extends Application {
                 }
             }
 
+            private void updateUnreadWidget() {
+                try {
+                    UnreadWidgetProvider.updateUnreadCount(K9.this);
+                } catch (Exception e) {
+                    if (K9.DEBUG) {
+                        Log.e(LOG_TAG, "Error while updating unread widget(s)", e);
+                    }
+                }
+            }
+
             @Override
             public void synchronizeMailboxRemovedMessage(Account account, String folder, Message message) {
                 broadcastIntent(K9.Intents.EmailReceived.ACTION_EMAIL_DELETED, account, folder, message);
+                updateUnreadWidget();
             }
 
             @Override
             public void messageDeleted(Account account, String folder, Message message) {
                 broadcastIntent(K9.Intents.EmailReceived.ACTION_EMAIL_DELETED, account, folder, message);
+                updateUnreadWidget();
             }
 
             @Override
             public void synchronizeMailboxNewMessage(Account account, String folder, Message message) {
                 broadcastIntent(K9.Intents.EmailReceived.ACTION_EMAIL_RECEIVED, account, folder, message);
+                updateUnreadWidget();
+            }
+
+            @Override
+            public void folderStatusChanged(Account account, String folderName,
+                    int unreadMessageCount) {
+                updateUnreadWidget();
             }
 
             @Override
@@ -562,6 +604,13 @@ public class K9 extends Application {
         mMessageViewReturnToList = sprefs.getBoolean("messageViewReturnToList", false);
         mMessageViewShowNext = sprefs.getBoolean("messageViewShowNext", false);
 
+        mBatchButtonsMarkRead = sprefs.getBoolean("batchButtonsMarkRead", true);
+        mBatchButtonsDelete = sprefs.getBoolean("batchButtonsDelete", true);
+        mBatchButtonsArchive = sprefs.getBoolean("batchButtonsArchive", true);
+        mBatchButtonsMove = sprefs.getBoolean("batchButtonsMove", true);
+        mBatchButtonsFlag = sprefs.getBoolean("batchButtonsFlag", true);
+        mBatchButtonsUnselect = sprefs.getBoolean("batchButtonsUnselect", true);
+        
         useGalleryBugWorkaround = sprefs.getBoolean("useGalleryBugWorkaround", K9.isGalleryBuggy());
 
         mConfirmDelete = sprefs.getBoolean("confirmDelete", false);
@@ -583,7 +632,17 @@ public class K9 extends Application {
         }
 
         K9.setK9Language(sprefs.getString("language", ""));
-        K9.setK9Theme(sprefs.getInt("theme", android.R.style.Theme_Light));
+
+        int theme = sprefs.getInt("theme", THEME_LIGHT);
+
+        // We used to save the resource ID of the theme. So convert that to the new format if
+        // necessary.
+        if (theme == THEME_DARK || theme == android.R.style.Theme) {
+            theme = THEME_DARK;
+        } else {
+            theme = THEME_LIGHT;
+        }
+        K9.setK9Theme(theme);
     }
 
     private void maybeSetupStrictMode() {
@@ -640,6 +699,14 @@ public class K9 extends Application {
 
     public static void setK9Language(String nlanguage) {
         language = nlanguage;
+    }
+
+    public static int getK9ThemeResourceId(int theme) {
+        return (theme == THEME_LIGHT) ? R.style.Theme_K9_Light : R.style.Theme_K9_Dark;
+    }
+
+    public static int getK9ThemeResourceId() {
+        return getK9ThemeResourceId(theme);
     }
 
     public static int getK9Theme() {
@@ -989,6 +1056,48 @@ public class K9 extends Application {
         K9.compactLayouts = compactLayouts;
     }
 
+    public static boolean batchButtonsMarkRead() {
+    	return mBatchButtonsMarkRead;
+    }
+    public static void setBatchButtonsMarkRead(final boolean state) {
+    	mBatchButtonsMarkRead = state;
+    }
+    
+    public static boolean batchButtonsDelete() {
+    	return mBatchButtonsDelete;
+    }
+    public static void setBatchButtonsDelete(final boolean state) {
+    	mBatchButtonsDelete = state;
+    }
+    
+    public static boolean batchButtonsArchive() {
+    	return mBatchButtonsArchive;
+    }
+    public static void setBatchButtonsArchive(final boolean state) {
+    	mBatchButtonsArchive = state;
+    }
+    
+    public static boolean batchButtonsMove() {
+    	return mBatchButtonsMove;
+    }
+    public static void setBatchButtonsMove(final boolean state) {
+    	mBatchButtonsMove = state;
+    }
+    
+    public static boolean batchButtonsFlag() {
+    	return mBatchButtonsFlag;
+    }
+    public static void setBatchButtonsFlag(final boolean state) {
+    	mBatchButtonsFlag = state;
+    }
+    
+    public static boolean batchButtonsUnselect() {
+    	return mBatchButtonsUnselect;
+    }
+    public static void setBatchButtonsUnselect(final boolean state) {
+    	mBatchButtonsUnselect = state;
+    }
+    
     /**
      * Check if this system contains a buggy Gallery 3D package.
      *
@@ -1015,4 +1124,24 @@ public class K9 extends Application {
     public static void setAttachmentDefaultPath(String attachmentDefaultPath) {
         K9.mAttachmentDefaultPath = attachmentDefaultPath;
     }
+
+    public static synchronized SortType getSortType() {
+        return mSortType;
+    }
+
+    public static synchronized void setSortType(SortType sortType) {
+        mSortType = sortType;
+    }
+
+    public static synchronized boolean isSortAscending(SortType sortType) {
+        if (mSortAscending.get(sortType) == null) {
+            mSortAscending.put(sortType, sortType.isDefaultAscending());
+        }
+        return mSortAscending.get(sortType);
+    }
+
+    public static synchronized void setSortAscending(SortType sortType, boolean sortAscending) {
+        mSortAscending.put(sortType, sortAscending);
+    }
+
 }

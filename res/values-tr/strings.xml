@@ -206,8 +206,6 @@
     <string name="debug_enable_sensitive_logging_title">Hassas bigi günlüğü tut</string>
     <string name="debug_enable_sensitive_logging_summary">Günlüklerde şifreler görünebilir.</string>
 
-    <string name="message_header_mua">Android için K-9 Posta</string>
-
     <string name="combined_inbox_title">Bütün Postalar</string>
     <string name="combined_inbox_label">Bütün hesaplardan gelen yeni mesajlar</string>
     <string name="combined_inbox_list_title">Gelen Kutusu bütün postaları</string> <!-- Inbox here should be the same as mailbox_name_inbox -->
@@ -516,14 +514,8 @@
     <string name="account_settings_notification_unread_count_label">Okunmamış sayısını göster</string>
     <string name="account_settings_notification_unread_count_summary">Bildirim çubuğunda okunmamış mesaj numarasını göster.</string>
 
-    <string name="account_settings_hide_buttons_label">Gezinme tuşlarını kaydırma</string>
-    <string name="account_settings_hide_buttons_never">Asla</string>
-    <string name="account_settings_hide_buttons_keyboard_avail">Klavye olduğu zaman</string>
-    <string name="account_settings_hide_buttons_always">Daima</string>
-
     <string name="account_settings_enable_move_buttons_label">İşaretleme düğmelerini etkinleştir</string>
     <string name="account_settings_enable_move_buttons_summary">Arşiv, Taşıma ve Spam düğmelerini göster.</string>
-    <string name="account_settings_hide_move_buttons_label">İşaretleme düğmelerini kaydır</string>
 
     <string name="account_settings_show_pictures_label">Daima imajları göster</string>
     <string name="account_settings_show_pictures_never">Hayır</string>

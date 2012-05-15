@@ -2,6 +2,7 @@ package com.fsck.k9.helper;
 
 import java.lang.reflect.Constructor;
 import java.lang.reflect.InvocationTargetException;
+
 import android.content.ContentResolver;
 import android.content.Context;
 import android.database.Cursor;
@@ -105,6 +106,14 @@ public abstract class Contacts {
     public abstract void createContact(Address email);
 
     /**
+     * Start the activity to add a phone number to an existing contact or add a new one.
+     *
+     * @param phoneNumber
+     *         The phone number to add to a contact, or to use when creating a new contact.
+     */
+    public abstract void addPhoneContact(String phoneNumber);
+
+    /**
      * Check whether the provided email address belongs to one of the contacts.
      *
      * @param emailAddress The email address to look for.
@@ -166,13 +175,15 @@ public abstract class Contacts {
     public abstract Intent contactPickerIntent();
 
     /**
-     * Given a contact picker intent, returns the primary email address of that
-     * contact.
+     * Given a contact picker intent, returns a {@code ContactItem} instance for that contact.
      *
-     * @param intent The {@link Intent} returned by this contact picker.
-     * @return The primary email address of the picked contact.
+     * @param intent
+     *         The {@link Intent} returned by the contact picker.
+     *
+     * @return A {@link ContactItem} instance describing the picked contact. Or {@code null} if the
+     *         contact doesn't have any email addresses.
      */
-    public abstract String getEmailFromContactPicker(final Intent intent);
+    public abstract ContactItem extractInfoFromContactPickerIntent(final Intent intent);
 
     /**
      * Does the device actually have a Contacts application suitable for

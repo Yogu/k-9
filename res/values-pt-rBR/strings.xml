@@ -229,8 +229,6 @@ Bem-vindo à configuração do K-9 Mail. K-9 é um cliente de e-mail com código
     <string name="debug_enable_sensitive_logging_title">Logar informações confidencias</string>
     <string name="debug_enable_sensitive_logging_summary">Talvez as senhas sejam mostradas nos logs.</string>
 
-    <string name="message_header_mua">K-9 Mail para Android</string>
-
     <string name="combined_inbox_title">Todos os e-mails</string>
     <string name="combined_inbox_label">Mensagens recentes de todas as contas</string>
     <string name="combined_inbox_list_title">Todos os e-mails da caixa de entrada</string> <!-- Inbox here should be the same as mailbox_name_inbox -->
@@ -539,14 +537,8 @@ Bem-vindo à configuração do K-9 Mail. K-9 é um cliente de e-mail com código
     <string name="account_settings_notification_unread_count_label">Mostrar contagem de não lidas</string>
     <string name="account_settings_notification_unread_count_summary">Mostrar o número de mensagens não lidas na barra de notificação.</string>
 
-    <string name="account_settings_hide_buttons_label">Navegação com botões de scroll</string>
-    <string name="account_settings_hide_buttons_never">Nunca</string>
-    <string name="account_settings_hide_buttons_keyboard_avail">Quando teclado estiver disponível</string>
-    <string name="account_settings_hide_buttons_always">Sempre</string>
-
     <string name="account_settings_enable_move_buttons_label">Habilitar botão de ações</string>
     <string name="account_settings_enable_move_buttons_summary">Mostrar botões de Arquivar, Mover e Span.</string>
-    <string name="account_settings_hide_move_buttons_label">Scroll para botões de ação </string>
 
     <string name="account_settings_show_pictures_label">Sempre mostrar imagens</string>
     <string name="account_settings_show_pictures_never">Não</string>

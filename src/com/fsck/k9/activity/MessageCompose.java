@@ -15,9 +15,11 @@ import com.fsck.k9.mail.*;
 import com.fsck.k9.view.MessageWebView;
 import org.apache.james.mime4j.codec.EncoderUtil;
 import android.app.AlertDialog;
+import android.app.AlertDialog.Builder;
 import android.app.Dialog;
 import android.content.ContentResolver;
 import android.content.Context;
+import android.content.ContextWrapper;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.content.pm.ActivityInfo;
@@ -31,14 +33,17 @@ import android.provider.OpenableColumns;
 import android.text.util.Rfc822Tokenizer;
 import android.util.Log;
 import android.util.TypedValue;
+import android.view.LayoutInflater;
 import android.view.Menu;
 import android.view.MenuItem;
 import android.view.View;
 import android.view.View.OnClickListener;
 import android.view.View.OnFocusChangeListener;
+import android.view.ViewGroup;
 import android.view.Window;
 import android.webkit.WebView;
 import android.widget.AutoCompleteTextView.Validator;
+import android.widget.BaseAdapter;
 import android.widget.Button;
 import android.widget.CheckBox;
 import android.widget.EditText;
@@ -67,6 +72,7 @@ import com.fsck.k9.controller.MessagingController;
 import com.fsck.k9.controller.MessagingListener;
 import com.fsck.k9.crypto.CryptoProvider;
 import com.fsck.k9.crypto.PgpData;
+import com.fsck.k9.helper.ContactItem;
 import com.fsck.k9.helper.Contacts;
 import com.fsck.k9.helper.Utility;
 import com.fsck.k9.mail.Message.RecipientType;
@@ -84,6 +90,7 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
     private static final int DIALOG_REFUSE_TO_SAVE_DRAFT_MARKED_ENCRYPTED = 2;
     private static final int DIALOG_CONTINUE_WITHOUT_PUBLIC_KEY = 3;
     private static final int DIALOG_CONFIRM_DISCARD_ON_BACK = 4;
+    private static final int DIALOG_CHOOSE_IDENTITY = 5;
 
     private static final long INVALID_DRAFT_ID = MessagingController.INVALID_MESSAGE_ID;
 
@@ -128,12 +135,14 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
     private static final int MSG_DISCARDED_DRAFT = 6;
 
     private static final int ACTIVITY_REQUEST_PICK_ATTACHMENT = 1;
-    private static final int ACTIVITY_CHOOSE_IDENTITY = 2;
-    private static final int ACTIVITY_CHOOSE_ACCOUNT = 3;
     private static final int CONTACT_PICKER_TO = 4;
     private static final int CONTACT_PICKER_CC = 5;
     private static final int CONTACT_PICKER_BCC = 6;
+    private static final int CONTACT_PICKER_TO2 = 7;
+    private static final int CONTACT_PICKER_CC2 = 8;
+    private static final int CONTACT_PICKER_BCC2 = 9;
 
+    private static final Account[] EMPTY_ACCOUNT_ARRAY = new Account[0];
 
     /**
      * Regular expression to remove the first localized "Re:" prefix in subjects.
@@ -186,7 +195,7 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
 
     private QuotedTextMode mQuotedTextMode = QuotedTextMode.NONE;
 
-    private TextView mFromView;
+    private Button mChooseIdentityButton;
     private LinearLayout mCcWrapper;
     private LinearLayout mBccWrapper;
     private MultiAutoCompleteTextView mToView;
@@ -407,10 +416,17 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
 
         mContacts = Contacts.getInstance(MessageCompose.this);
 
-        mAddressAdapter = EmailAddressAdapter.getInstance(this);
+        mAddressAdapter = new EmailAddressAdapter(this);
         mAddressValidator = new EmailAddressValidator();
 
-        mFromView = (TextView) findViewById(R.id.from);
+        mChooseIdentityButton = (Button) findViewById(R.id.identity);
+        mChooseIdentityButton.setOnClickListener(this);
+
+        if (mAccount.getIdentities().size() == 1 &&
+                Preferences.getPreferences(this).getAvailableAccounts().size() == 1) {
+            mChooseIdentityButton.setVisibility(View.GONE);
+        }
+
         mToView = (MultiAutoCompleteTextView) findViewById(R.id.to);
         mCcView = (MultiAutoCompleteTextView) findViewById(R.id.cc);
         mBccView = (MultiAutoCompleteTextView) findViewById(R.id.bcc);
@@ -548,8 +564,6 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
         mQuotedTextEdit.setOnClickListener(this);
         mQuotedTextDelete.setOnClickListener(this);
 
-        mFromView.setVisibility(View.GONE);
-
         mToView.setAdapter(mAddressAdapter);
         mToView.setTokenizer(new Rfc822Tokenizer());
         mToView.setValidator(mAddressValidator);
@@ -607,8 +621,9 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
         mReadReceipt = mAccount.isMessageReadReceiptAlways();
         mQuoteStyle = mAccount.getQuoteStyle();
 
+        updateFrom();
+
         if (!mSourceMessageProcessed) {
-            updateFrom();
             updateSignature();
 
             if (ACTION_REPLY.equals(action) ||
@@ -744,14 +759,18 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
             }
 
             /*
-             * Note: According to the documenation ACTION_VIEW and ACTION_SENDTO
-             * don't accept EXTRA_* parameters. Contrary to the AOSP Email application
-             * we don't accept those EXTRAs.
-             * Dear developer, if your application is using those EXTRAs you're doing
-             * it wrong! So go fix your program or get AOSP to change the documentation.
+             * Note: According to the documenation ACTION_VIEW and ACTION_SENDTO don't accept
+             * EXTRA_* parameters.
+             * And previously we didn't process these EXTRAs. But it looks like nobody bothers to
+             * read the official documentation and just copies wrong sample code that happens to
+             * work with the AOSP Email application. And because even big players get this wrong,
+             * we're now finally giving in and read the EXTRAs for ACTION_SENDTO (below).
              */
         }
-        else if (Intent.ACTION_SEND.equals(action) || Intent.ACTION_SEND_MULTIPLE.equals(action)) {
+
+        if (Intent.ACTION_SEND.equals(action) || Intent.ACTION_SEND_MULTIPLE.equals(action) ||
+                Intent.ACTION_SENDTO.equals(action)) {
+
             /*
              * Note: Here we allow a slight deviation from the documentated behavior.
              * EXTRA_TEXT is used as message body (if available) regardless of the MIME
@@ -759,7 +778,8 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
              * using EXTRA_STREAM.
              */
             CharSequence text = intent.getCharSequenceExtra(Intent.EXTRA_TEXT);
-            if (text != null) {
+            // Only use EXTRA_TEXT if the body hasn't already been set by the mailto URI
+            if (text != null && mMessageContentView.getText().length() == 0) {
                 mMessageContentView.setText(text);
             }
 
@@ -782,7 +802,8 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
             }
 
             String subject = intent.getStringExtra(Intent.EXTRA_SUBJECT);
-            if (subject != null) {
+            // Only use EXTRA_SUBJECT if the subject hasn't already been set by the mailto URI
+            if (subject != null && mSubjectView.getText().length() == 0) {
                 mSubjectView.setText(subject);
             }
 
@@ -791,16 +812,16 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
             String[] extraBcc = intent.getStringArrayExtra(Intent.EXTRA_BCC);
 
             if (extraEmail != null) {
-                setRecipients(mToView, Arrays.asList(extraEmail));
+                addRecipients(mToView, Arrays.asList(extraEmail));
             }
 
             boolean ccOrBcc = false;
             if (extraCc != null) {
-                ccOrBcc |= setRecipients(mCcView, Arrays.asList(extraCc));
+                ccOrBcc |= addRecipients(mCcView, Arrays.asList(extraCc));
             }
 
             if (extraBcc != null) {
-                ccOrBcc |= setRecipients(mBccView, Arrays.asList(extraBcc));
+                ccOrBcc |= addRecipients(mBccView, Arrays.asList(extraBcc));
             }
 
             if (ccOrBcc) {
@@ -810,19 +831,31 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
         }
     }
 
-    private boolean setRecipients(TextView view, List<String> recipients) {
-        boolean recipientAdded = false;
-        if (recipients != null) {
-            StringBuilder addressList = new StringBuilder();
-            for (String recipient : recipients) {
-                addressList.append(recipient);
-                addressList.append(", ");
-                recipientAdded = true;
-            }
-            view.setText(addressList);
+    private boolean addRecipients(TextView view, List<String> recipients) {
+        if (recipients == null || recipients.size() == 0) {
+            return false;
         }
 
-        return recipientAdded;
+        StringBuilder addressList = new StringBuilder();
+
+        // Read current contents of the TextView
+        String text = view.getText().toString();
+        addressList.append(text);
+
+        // Add comma if necessary
+        if (text.length() != 0 && !(text.endsWith(", ") || text.endsWith(","))) {
+            addressList.append(", ");
+        }
+
+        // Add recipients
+        for (String recipient : recipients) {
+            addressList.append(recipient);
+            addressList.append(", ");
+        }
+
+        view.setText(addressList);
+
+        return true;
     }
 
     private void initializeCrypto() {
@@ -941,7 +974,7 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
         if (mQuotedTextMode != QuotedTextMode.NONE && mMessageFormat == MessageFormat.HTML) {
             mQuotedHtmlContent = (InsertableHtmlContent) savedInstanceState.getSerializable(STATE_KEY_HTML_QUOTE);
             if (mQuotedHtmlContent != null && mQuotedHtmlContent.getQuotedContent() != null) {
-                mQuotedHTML.loadDataWithBaseURL("http://", mQuotedHtmlContent.getQuotedContent(), "text/html", "utf-8", null);
+                mQuotedHTML.setText(mQuotedHtmlContent.getQuotedContent(), "text/html");
             }
         }
         mDraftId = savedInstanceState.getLong(STATE_KEY_DRAFT_ID);
@@ -1535,7 +1568,7 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
 
     private void saveIfNeeded() {
         if (!mDraftNeedsSaving || mPreventDraftSaving || mPgpData.hasEncryptionKeys() ||
-                mEncryptCheckbox.isChecked() || isDraftsFolderDisabled()) {
+                mEncryptCheckbox.isChecked() || !mAccount.hasDraftsFolder()) {
             return;
         }
 
@@ -1776,20 +1809,36 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
             addAttachment(data.getData());
             mDraftNeedsSaving = true;
             break;
-        case ACTIVITY_CHOOSE_IDENTITY:
-            onIdentityChosen(data);
-            break;
-        case ACTIVITY_CHOOSE_ACCOUNT:
-            onAccountChosen(data);
-            break;
         case CONTACT_PICKER_TO:
         case CONTACT_PICKER_CC:
         case CONTACT_PICKER_BCC:
-            String email = mContacts.getEmailFromContactPicker(data);
-            if (email.length() == 0) {
+            ContactItem contact = mContacts.extractInfoFromContactPickerIntent(data);
+            if (contact == null) {
                 Toast.makeText(this, getString(R.string.error_contact_address_not_found), Toast.LENGTH_LONG).show();
                 return;
             }
+            if (contact.emailAddresses.size() > 1) {
+                Intent i = new Intent(this, EmailAddressList.class);
+                i.putExtra(EmailAddressList.EXTRA_CONTACT_ITEM, contact);
+
+                if (requestCode == CONTACT_PICKER_TO) {
+                    startActivityForResult(i, CONTACT_PICKER_TO2);
+                } else if (requestCode == CONTACT_PICKER_CC) {
+                    startActivityForResult(i, CONTACT_PICKER_CC2);
+                } else if (requestCode == CONTACT_PICKER_BCC) {
+                    startActivityForResult(i, CONTACT_PICKER_BCC2);
+                }
+                return;
+            }
+            if (K9.DEBUG) {
+                List<String> emails = contact.emailAddresses;
+                for (int i = 0; i < emails.size(); i++) {
+                    Log.v(K9.LOG_TAG, "email[" + i + "]: " + emails.get(i));
+                }
+            }
+
+
+            String email = contact.emailAddresses.get(0);
             if (requestCode == CONTACT_PICKER_TO) {
                 addAddress(mToView, new Address(email, ""));
             } else if (requestCode == CONTACT_PICKER_CC) {
@@ -1803,6 +1852,18 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
 
 
             break;
+        case CONTACT_PICKER_TO2:
+        case CONTACT_PICKER_CC2:
+        case CONTACT_PICKER_BCC2:
+            String emailAddr = data.getStringExtra(EmailAddressList.EXTRA_EMAIL_ADDRESS);
+            if (requestCode == CONTACT_PICKER_TO2) {
+                addAddress(mToView, new Address(emailAddr, ""));
+            } else if (requestCode == CONTACT_PICKER_CC2) {
+                addAddress(mCcView, new Address(emailAddr, ""));
+            } else if (requestCode == CONTACT_PICKER_BCC2) {
+                addAddress(mBccView, new Address(emailAddr, ""));
+            }
+            break;
         }
     }
 
@@ -1811,15 +1872,7 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
         startActivityForResult(mContacts.contactPickerIntent(), resultId);
     }
 
-
-
-    private void onAccountChosen(final Intent intent) {
-        final Bundle extras = intent.getExtras();
-        final String uuid = extras.getString(ChooseAccount.EXTRA_ACCOUNT);
-        final Identity identity = (Identity) extras.getSerializable(ChooseAccount.EXTRA_IDENTITY);
-
-        final Account account = Preferences.getPreferences(this).getAccount(uuid);
-
+    private void onAccountChosen(Account account, Identity identity) {
         if (!mAccount.equals(account)) {
             if (K9.DEBUG) {
                 Log.v(K9.LOG_TAG, "Switching account from " + mAccount + " to " + account);
@@ -1863,11 +1916,6 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
         switchToIdentity(identity);
     }
 
-    private void onIdentityChosen(Intent intent) {
-        Bundle bundle = intent.getExtras();
-        switchToIdentity((Identity) bundle.getSerializable(ChooseIdentity.EXTRA_IDENTITY));
-    }
-
     private void switchToIdentity(Identity identity) {
         mIdentity = identity;
         mIdentityChanged = true;
@@ -1877,10 +1925,7 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
     }
 
     private void updateFrom() {
-        if (mIdentityChanged) {
-            mFromView.setVisibility(View.VISIBLE);
-        }
-        mFromView.setText(getString(R.string.message_view_from_format, mIdentity.getName(), mIdentity.getEmail()));
+        mChooseIdentityButton.setText(mIdentity.getEmail());
     }
 
     private void updateSignature() {
@@ -1922,6 +1967,9 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
                 final String sourceMessageUid = mMessageReference.uid;
                 MessagingController.getInstance(getApplication()).loadMessageForView(account, folderName, sourceMessageUid, null);
             }
+            break;
+        case R.id.identity:
+            showDialog(DIALOG_CHOOSE_IDENTITY);
             break;
         }
     }
@@ -1989,9 +2037,6 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
         case R.id.add_attachment_video:
             onAddAttachment2("video/*");
             break;
-        case R.id.choose_identity:
-            onChooseIdentity();
-            break;
         case R.id.read_receipt:
             onReadReceipt();
         default:
@@ -2000,32 +2045,13 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
         return true;
     }
 
-    private void onChooseIdentity() {
-        // keep things simple: trigger account choice only if there are more
-        // than 1 account
-        mIgnoreOnPause = true;
-        if (Preferences.getPreferences(this).getAvailableAccounts().size() > 1) {
-            final Intent intent = new Intent(this, ChooseAccount.class);
-            intent.putExtra(ChooseAccount.EXTRA_ACCOUNT, mAccount.getUuid());
-            intent.putExtra(ChooseAccount.EXTRA_IDENTITY, mIdentity);
-            startActivityForResult(intent, ACTIVITY_CHOOSE_ACCOUNT);
-        } else if (mAccount.getIdentities().size() > 1) {
-            Intent intent = new Intent(this, ChooseIdentity.class);
-            intent.putExtra(ChooseIdentity.EXTRA_ACCOUNT, mAccount.getUuid());
-            startActivityForResult(intent, ACTIVITY_CHOOSE_IDENTITY);
-        } else {
-            Toast.makeText(this, getString(R.string.no_identities),
-                           Toast.LENGTH_LONG).show();
-        }
-    }
-
     @Override
     public boolean onCreateOptionsMenu(Menu menu) {
         super.onCreateOptionsMenu(menu);
         getMenuInflater().inflate(R.menu.message_compose_option, menu);
 
         // Disable the 'Save' menu option if Drafts folder is set to -NONE-
-        if (isDraftsFolderDisabled()) {
+        if (!mAccount.hasDraftsFolder()) {
             menu.findItem(R.id.save).setEnabled(false);
         }
 
@@ -2055,7 +2081,7 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
         if (mDraftNeedsSaving) {
             if (mEncryptCheckbox.isChecked()) {
                 showDialog(DIALOG_REFUSE_TO_SAVE_DRAFT_MARKED_ENCRYPTED);
-            } else if (isDraftsFolderDisabled()) {
+            } else if (!mAccount.hasDraftsFolder()) {
                 showDialog(DIALOG_CONFIRM_DISCARD_ON_BACK);
             } else {
                 showDialog(DIALOG_SAVE_OR_DISCARD_DRAFT_MESSAGE);
@@ -2068,10 +2094,6 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
                 super.onBackPressed();
             }
         }
-    }
-
-    private boolean isDraftsFolderDisabled() {
-        return mAccount.getDraftsFolderName().equals(K9.FOLDER_NONE);
     }
 
     @Override
@@ -2148,6 +2170,21 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
                 }
             })
             .create();
+        case DIALOG_CHOOSE_IDENTITY:
+            Context context = new ContextWrapper(this);
+            context.setTheme(K9.getK9ThemeResourceId(K9.THEME_LIGHT));
+            Builder builder = new AlertDialog.Builder(context);
+            builder.setTitle(R.string.send_as);
+            final IdentityAdapter adapter = new IdentityAdapter(context, getLayoutInflater());
+            builder.setAdapter(adapter, new DialogInterface.OnClickListener() {
+                @Override
+                public void onClick(DialogInterface dialog, int which) {
+                    IdentityContainer container = (IdentityContainer) adapter.getItem(which);
+                    onAccountChosen(container.account, container.identity);
+                }
+            });
+
+            return builder.create();
         }
         return super.onCreateDialog(id);
     }
@@ -2289,8 +2326,15 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
                 }
 
                 if (ACTION_REPLY_ALL.equals(action)) {
+                    if (message.getReplyTo().length > 0) {
+                        for (Address address : message.getFrom()) {
+                            if (!mAccount.isAnIdentity(address)) {
+                                addAddress(mToView, address);
+                            }
+                        }
+                    }
                     for (Address address : message.getRecipients(RecipientType.TO)) {
-                        if (!mAccount.isAnIdentity(address)) {
+                        if (!mAccount.isAnIdentity(address) && !Utility.arrayContains(replyToAddresses, address)) {
                             addAddress(mToView, address);
                         }
 
@@ -2395,7 +2439,15 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
                 if (k9identity.containsKey(IdentityField.ORIGINAL_MESSAGE)) {
                     mMessageReference = null;
                     try {
-                        mMessageReference = new MessageReference(k9identity.get(IdentityField.ORIGINAL_MESSAGE));
+                        String originalMessage = k9identity.get(IdentityField.ORIGINAL_MESSAGE);
+                        MessageReference messageReference = new MessageReference(originalMessage);
+
+                        // Check if this is a valid account in our database
+                        Preferences prefs = Preferences.getPreferences(getApplicationContext());
+                        Account account = prefs.getAccount(messageReference.accountUuid);
+                        if (account != null) {
+                            mMessageReference = messageReference;
+                        }
                     } catch (MessagingException e) {
                         Log.e(K9.LOG_TAG, "Could not decode message reference in identity.", e);
                     }
@@ -2420,19 +2472,19 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
                 updateFrom();
 
                 Integer bodyLength = k9identity.get(IdentityField.LENGTH) != null
-                                     ? Integer.parseInt(k9identity.get(IdentityField.LENGTH))
+                                     ? Integer.valueOf(k9identity.get(IdentityField.LENGTH))
                                      : 0;
                 Integer bodyOffset = k9identity.get(IdentityField.OFFSET) != null
-                                     ? Integer.parseInt(k9identity.get(IdentityField.OFFSET))
+                                     ? Integer.valueOf(k9identity.get(IdentityField.OFFSET))
                                      : 0;
                 Integer bodyFooterOffset = k9identity.get(IdentityField.FOOTER_OFFSET) != null
-                        ? Integer.parseInt(k9identity.get(IdentityField.FOOTER_OFFSET))
+                        ? Integer.valueOf(k9identity.get(IdentityField.FOOTER_OFFSET))
                         : null;
                 Integer bodyPlainLength = k9identity.get(IdentityField.PLAIN_LENGTH) != null
-                        ? Integer.parseInt(k9identity.get(IdentityField.PLAIN_LENGTH))
+                        ? Integer.valueOf(k9identity.get(IdentityField.PLAIN_LENGTH))
                         : null;
                 Integer bodyPlainOffset = k9identity.get(IdentityField.PLAIN_OFFSET) != null
-                        ? Integer.parseInt(k9identity.get(IdentityField.PLAIN_OFFSET))
+                        ? Integer.valueOf(k9identity.get(IdentityField.PLAIN_OFFSET))
                         : null;
                 mQuoteStyle = k9identity.get(IdentityField.QUOTE_STYLE) != null
                         ? QuoteStyle.valueOf(k9identity.get(IdentityField.QUOTE_STYLE))
@@ -2482,7 +2534,7 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
                             } else {
                                 mQuotedHtmlContent.setFooterInsertionPoint(bodyOffset);
                             }
-                            mQuotedHTML.loadDataWithBaseURL("http://", mQuotedHtmlContent.getQuotedContent(), "text/html", "utf-8", null);
+                            mQuotedHTML.setText(mQuotedHtmlContent.getQuotedContent(), "text/html");
                         }
                     }
                     if (bodyPlainOffset != null && bodyPlainLength != null) {
@@ -2665,7 +2717,7 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
             // Add the HTML reply header to the top of the content.
             mQuotedHtmlContent = quoteOriginalHtmlMessage(mSourceMessage, content, mQuoteStyle);
             // Load the message with the reply header.
-            mQuotedHTML.loadDataWithBaseURL("http://", mQuotedHtmlContent.getQuotedContent(), "text/html", "utf-8", null);
+            mQuotedHTML.setText(mQuotedHtmlContent.getQuotedContent(), "text/html");
             mQuotedText.setText(quoteOriginalTextMessage(mSourceMessage,
                     getBodyTextFromMessage(mSourceMessage, MessageFormat.TEXT), mQuoteStyle));
 
@@ -2709,7 +2761,7 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
             if (part != null) {
                 if (K9.DEBUG)
                     Log.d(K9.LOG_TAG, "getBodyTextFromMessage: HTML requested, text found.");
-                return HtmlConverter.textToHtml(MimeUtility.getTextFromPart(part));
+                return HtmlConverter.textToHtml(MimeUtility.getTextFromPart(part), true);
             }
         } else if (format == MessageFormat.TEXT) {
             // Text takes precedence, then html.
@@ -2969,13 +3021,13 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
             to = new ArrayList<String>(to);
             to.add(0, recipient);
         }
-        setRecipients(mToView, to);
+        addRecipients(mToView, to);
 
         // Read carbon copy recipients from the "cc" parameter.
-        boolean ccOrBcc = setRecipients(mCcView, uri.getQueryParameters("cc"));
+        boolean ccOrBcc = addRecipients(mCcView, uri.getQueryParameters("cc"));
 
         // Read blind carbon copy recipients from the "bcc" parameter.
-        ccOrBcc |= setRecipients(mBccView, uri.getQueryParameters("bcc"));
+        ccOrBcc |= addRecipients(mBccView, uri.getQueryParameters("bcc"));
 
         if (ccOrBcc) {
             // Display CC and BCC text fields if CC or BCC recipients were set by the intent.
@@ -3176,5 +3228,140 @@ public class MessageCompose extends K9Activity implements OnClickListener, OnFoc
         }
 
         return insertable;
+    }
+
+    /**
+     * Used to store an {@link Identity} instance together with the {@link Account} it belongs to.
+     *
+     * @see IdentityAdapter
+     */
+    static class IdentityContainer {
+        public final Identity identity;
+        public final Account account;
+
+        IdentityContainer(Identity identity, Account account) {
+            this.identity = identity;
+            this.account = account;
+        }
+    }
+
+    /**
+     * Adapter for the <em>Choose identity</em> list view.
+     *
+     * <p>
+     * Account names are displayed as section headers, identities as selectable list items.
+     * </p>
+     */
+    static class IdentityAdapter extends BaseAdapter {
+        private LayoutInflater mLayoutInflater;
+        private List<Object> mItems;
+        private FontSizes mFontSizes;
+
+        public IdentityAdapter(Context context, LayoutInflater layoutInflater) {
+            mLayoutInflater = layoutInflater;
+            mFontSizes = K9.getFontSizes();
+
+            List<Object> items = new ArrayList<Object>();
+            Preferences prefs = Preferences.getPreferences(context.getApplicationContext());
+            Account[] accounts = prefs.getAvailableAccounts().toArray(EMPTY_ACCOUNT_ARRAY);
+            for (Account account : accounts) {
+                items.add(account);
+                List<Identity> identities = account.getIdentities();
+                for (Identity identity : identities) {
+                    items.add(new IdentityContainer(identity, account));
+                }
+            }
+            mItems = items;
+        }
+
+        @Override
+        public int getCount() {
+            return mItems.size();
+        }
+
+        @Override
+        public int getViewTypeCount() {
+            return 2;
+        }
+
+        @Override
+        public int getItemViewType(int position) {
+            return (mItems.get(position) instanceof Account) ? 0 : 1;
+        }
+
+        @Override
+        public boolean isEnabled(int position) {
+            return (mItems.get(position) instanceof IdentityContainer);
+        }
+
+        @Override
+        public Object getItem(int position) {
+            return mItems.get(position);
+        }
+
+        @Override
+        public long getItemId(int position) {
+            return position;
+        }
+
+        @Override
+        public boolean hasStableIds() {
+            return false;
+        }
+
+        @Override
+        public View getView(int position, View convertView, ViewGroup parent) {
+            Object item = mItems.get(position);
+
+            View view = null;
+            if (item instanceof Account) {
+                if (convertView != null && convertView.getTag() instanceof AccountHolder) {
+                    view = convertView;
+                } else {
+                    view = mLayoutInflater.inflate(R.layout.choose_account_item, parent, false);
+                    AccountHolder holder = new AccountHolder();
+                    holder.name = (TextView) view.findViewById(R.id.name);
+                    holder.chip = view.findViewById(R.id.chip);
+                    view.setTag(holder);
+                }
+
+                Account account = (Account) item;
+                AccountHolder holder = (AccountHolder) view.getTag();
+                holder.name.setText(account.getDescription());
+                holder.chip.setBackgroundColor(account.getChipColor());
+            } else if (item instanceof IdentityContainer) {
+                if (convertView != null && convertView.getTag() instanceof IdentityHolder) {
+                    view = convertView;
+                } else {
+                    view = mLayoutInflater.inflate(R.layout.choose_identity_item, parent, false);
+                    IdentityHolder holder = new IdentityHolder();
+                    holder.name = (TextView) view.findViewById(R.id.name);
+                    holder.description = (TextView) view.findViewById(R.id.description);
+                    view.setTag(holder);
+                }
+
+                IdentityContainer identityContainer = (IdentityContainer) item;
+                Identity identity = identityContainer.identity;
+                IdentityHolder holder = (IdentityHolder) view.getTag();
+                holder.name.setText(identity.getDescription());
+                holder.description.setText(getIdentityDescription(identity));
+            }
+
+            return view;
+        }
+
+        static class AccountHolder {
+            public TextView name;
+            public View chip;
+        }
+
+        static class IdentityHolder {
+            public TextView name;
+            public TextView description;
+        }
+    }
+
+    private static String getIdentityDescription(Identity identity) {
+        return String.format("%s <%s>", identity.getName(), identity.getEmail());
     }
 }

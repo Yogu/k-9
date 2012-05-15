@@ -231,8 +231,6 @@ Benvido á Configuración de K-9. K-9 é un cliente de correo OpenSource para An
     <string name="debug_enable_sensitive_logging_title">Información sensible</string>
     <string name="debug_enable_sensitive_logging_summary">Deben amosarse chaves no log</string>
 
-    <string name="message_header_mua">K-9 Mail para Android</string>
-
     <string name="combined_inbox_title">Todos os correos</string>
     <string name="combined_inbox_label">Mensaxes recentes para todas as contas</string>
     <string name="combined_inbox_list_title">Todos os correos de Entrada</string> <!-- Inbox here should be the same as mailbox_name_inbox -->
@@ -541,14 +539,8 @@ Benvido á Configuración de K-9. K-9 é un cliente de correo OpenSource para An
     <string name="account_settings_notification_unread_count_label">Amosar número de mensaxes non lidos</string>
     <string name="account_settings_notification_unread_count_summary">Amosar número de mensaxen non lidos na barra de notificacións.</string>
 
-    <string name="account_settings_hide_buttons_label">Botóns de desprazamento</string>
-    <string name="account_settings_hide_buttons_never">Nunca</string>
-    <string name="account_settings_hide_buttons_keyboard_avail">Cando o teclado esté dispoñible</string>
-    <string name="account_settings_hide_buttons_always">Sempre</string>
-
     <string name="account_settings_enable_move_buttons_label">Habilitar botóns de copia</string>
     <string name="account_settings_enable_move_buttons_summary">Amosar botóns de arquivar, mover e SPAM</string>
-    <string name="account_settings_hide_move_buttons_label">Botóns de copia</string>
 
     <string name="account_settings_show_pictures_label">Amosar imaxes</string>
     <string name="account_settings_show_pictures_never">Nunca</string>

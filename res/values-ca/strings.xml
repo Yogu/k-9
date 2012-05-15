@@ -233,8 +233,6 @@ Benvingut a la configuració del K-9.  El K-9 és un client de codi obert per An
     <string name="debug_enable_sensitive_logging_title">Registra info sensible</string>
     <string name="debug_enable_sensitive_logging_summary">Pot mostrar les contrasenyes en els registres.</string>
 
-    <string name="message_header_mua">K-9 Mail per Android</string>
-
     <string name="combined_inbox_title">Tot el correu</string>
     <string name="combined_inbox_label">Missatges recents de tots els comptes</string>
     <string name="combined_inbox_list_title">Tot el correu de la Bústia d’entrada</string>
@@ -542,14 +540,8 @@ Benvingut a la configuració del K-9.  El K-9 és un client de codi obert per An
     <string name="account_settings_notification_unread_count_label">Mostra correu no llegit</string>
     <string name="account_settings_notification_unread_count_summary">Mostra el nombre de missatges no llegits a la barra de notificació.</string>
 
-    <string name="account_settings_hide_buttons_label">Botons de desplaçament</string>
-    <string name="account_settings_hide_buttons_never">Mai</string>
-    <string name="account_settings_hide_buttons_keyboard_avail">Quan el teclat estigui disponible</string>
-    <string name="account_settings_hide_buttons_always">Sempre</string>
-
     <string name="account_settings_enable_move_buttons_label">Habilita botons emplenat</string>
     <string name="account_settings_enable_move_buttons_summary">Mostra els botons d’Arxiu, Mou, i Brossa.</string>
-    <string name="account_settings_hide_move_buttons_label">Navega botons emplenament</string>
 
     <string name="account_settings_show_pictures_label">Sempre mostra imatges</string>
     <string name="account_settings_show_pictures_never">No</string>

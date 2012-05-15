@@ -233,8 +233,6 @@ Benvenuto nella configurazione della posta di K-9. K-9 è un client di posta ope
     <string name="debug_enable_sensitive_logging_title">Registra informazioni sensibili</string>
     <string name="debug_enable_sensitive_logging_summary">Può mostrare le passwords nei files di logs.</string>
 
-    <string name="message_header_mua">K-9 Mail per Android</string>
-
     <string name="combined_inbox_title">Tutti i messaggi</string>
     <string name="combined_inbox_label">Messaggi recenti da tutti gli account</string>
     <string name="combined_inbox_list_title">Tutti i messaggi in arrivo</string> <!-- Inbox here should be the same as mailbox_name_inbox -->
@@ -543,14 +541,8 @@ Benvenuto nella configurazione della posta di K-9. K-9 è un client di posta ope
     <string name="account_settings_notification_unread_count_label">Vedi numero messaggi non letti</string>
     <string name="account_settings_notification_unread_count_summary">Mostra il numero dei messaggi non letti nella barra di notifica.</string>
 
-    <string name="account_settings_hide_buttons_label">Scorri pulsanti navigazione</string>
-    <string name="account_settings_hide_buttons_never">Mai</string>
-    <string name="account_settings_hide_buttons_keyboard_avail">Quando la tastiera è disponibile</string>
-    <string name="account_settings_hide_buttons_always">Sempre</string>
-
     <string name="account_settings_enable_move_buttons_label">Abilita pulsanti archiviazione</string>
     <string name="account_settings_enable_move_buttons_summary">Mostra i pulsanti Archivia, Sposta e Spam.</string>
-    <string name="account_settings_hide_move_buttons_label">Scorri pulsanti archiviazione</string>
 
     <string name="account_settings_show_pictures_label">Mostra sempre le immagini</string>
     <string name="account_settings_show_pictures_never">No</string>

@@ -229,8 +229,6 @@ Tervetuloa K-9 Mail asennukseen.  K-9 on avoimen lähdekoodin sähköpostiasiak
     <string name="debug_enable_sensitive_logging_title">Kirjoita lokiin arkaluontoisia tietoja</string>
     <string name="debug_enable_sensitive_logging_summary">Salasanat saattavat näkyä lokeissa.</string>
 
-    <string name="message_header_mua">K-9 Mail Androidille</string>
-
     <string name="combined_inbox_title">Kaikki postit</string>
     <string name="combined_inbox_label">Viimeisimmät viestit kaikilta tileiltä</string>
     <string name="combined_inbox_list_title">Saapuneet</string>
@@ -537,14 +535,8 @@ Tervetuloa K-9 Mail asennukseen.  K-9 on avoimen lähdekoodin sähköpostiasiak
     <string name="account_settings_notification_unread_count_label">Näytä lukemattomien viestien määrä</string>
     <string name="account_settings_notification_unread_count_summary">Näytä lukemattomien viestien määrä osoiterivillä.</string>
 
-    <string name="account_settings_hide_buttons_label">Selauksen painikkeet</string>
-    <string name="account_settings_hide_buttons_never">Ei koskaan</string>
-    <string name="account_settings_hide_buttons_keyboard_avail">Kun näppäimistö on käytettävissä</string>
-    <string name="account_settings_hide_buttons_always">Aina</string>
-
     <string name="account_settings_enable_move_buttons_label">Ota käyttöön Siirrä-painikkeet</string>
     <string name="account_settings_enable_move_buttons_summary">Näytä Arkistoi-, Siirrä- ja Roskaposti-painikkeet.</string>
-    <string name="account_settings_hide_move_buttons_label">Vieritä Siirrä painikkeet</string>
 
     <string name="account_settings_show_pictures_label">Näytä kuvat automaattisesti</string>
     <string name="account_settings_show_pictures_never">Ei koskaan</string>

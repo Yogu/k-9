@@ -232,8 +232,6 @@ K-9 메일 설치를 환영합니다.  K-9은 표준 안드로이드 메일 클�
     <string name="debug_enable_sensitive_logging_title">중요 정보 기록</string>
     <string name="debug_enable_sensitive_logging_summary">로그에 비밀번호를 남길수도 있습니다.</string>
 
-    <string name="message_header_mua">안드로이드용 K-9 메일 </string>
-
     <string name="combined_inbox_title">모든 메일</string>
     <string name="combined_inbox_label">모든 계정의 모든 메시지</string>
     <string name="combined_inbox_list_title">받은편지함의 모든 메일</string> <!-- Inbox here should be the same as mailbox_name_inbox -->
@@ -542,14 +540,8 @@ K-9 메일 설치를 환영합니다.  K-9은 표준 안드로이드 메일 클�
     <string name="account_settings_notification_unread_count_label">읽지 않은 메일 수 세기</string>
     <string name="account_settings_notification_unread_count_summary">읽지 않은 메시지의 수를 상태바에 보여줍니다.</string>
 
-    <string name="account_settings_hide_buttons_label">네비게이션 버튼을 스크롤</string>
-    <string name="account_settings_hide_buttons_never">하지않음</string>
-    <string name="account_settings_hide_buttons_keyboard_avail">키보드를 이용가능할 경우</string>
-    <string name="account_settings_hide_buttons_always">항상</string>
-
     <string name="account_settings_enable_move_buttons_label">재정리(refile) 버튼 활성화</string>
     <string name="account_settings_enable_move_buttons_summary">보관, 이동, 스팸 버튼을 보이기</string>
-    <string name="account_settings_hide_move_buttons_label">재정리(refile) 보튼을 스크롤</string>
 
     <string name="account_settings_show_pictures_label">항상 그림 보기</string>
     <string name="account_settings_show_pictures_never">아니오</string>

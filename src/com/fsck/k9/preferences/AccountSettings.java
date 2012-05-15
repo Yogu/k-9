@@ -9,10 +9,10 @@ import java.util.TreeMap;
 
 import android.content.SharedPreferences;
 import com.fsck.k9.Account;
+import com.fsck.k9.Account.SortType;
 import com.fsck.k9.K9;
 import com.fsck.k9.R;
 import com.fsck.k9.Account.FolderMode;
-import com.fsck.k9.Account.ScrollButtons;
 import com.fsck.k9.crypto.Apg;
 import com.fsck.k9.mail.store.StorageManager;
 import com.fsck.k9.preferences.Settings.*;
@@ -24,6 +24,11 @@ public class AccountSettings {
     static {
         Map<String, TreeMap<Integer, SettingsDescription>> s =
             new LinkedHashMap<String, TreeMap<Integer, SettingsDescription>>();
+
+        /**
+         * When adding new settings here, be sure to increment {@link Settings.VERSION}
+         * and use that for whatever you add here.
+         */
 
         s.put("archiveFolderName", Settings.versions(
                 new V(1, new StringSetting("Archive"))
@@ -82,12 +87,6 @@ public class AccountSettings {
         s.put("goToUnreadMessageSearch", Settings.versions(
                 new V(1, new BooleanSetting(false))
             ));
-        s.put("hideButtonsEnum", Settings.versions(
-                new V(1, new EnumSetting(ScrollButtons.class, ScrollButtons.NEVER))
-            ));
-        s.put("hideMoveButtonsEnum", Settings.versions(
-                new V(1, new EnumSetting(ScrollButtons.class, ScrollButtons.NEVER))
-            ));
         s.put("idleRefreshMinutes", Settings.versions(
                 new V(1, new IntegerResourceSetting(24, R.array.idle_refresh_period_values))
             ));
@@ -102,6 +101,9 @@ public class AccountSettings {
             ));
         s.put("localStorageProvider", Settings.versions(
                 new V(1, new StorageProviderSetting())
+            ));
+        s.put("markMessageAsReadOnView", Settings.versions(
+                new V(7, new BooleanSetting(true))
             ));
         s.put("maxPushFolders", Settings.versions(
                 new V(1, new IntegerRangeSetting(0, 100, 10))
@@ -162,6 +164,12 @@ public class AccountSettings {
             ));
         s.put("sentFolderName", Settings.versions(
                 new V(1, new StringSetting("Sent"))
+            ));
+        s.put("sortTypeEnum", Settings.versions(
+                new V(9, new EnumSetting(SortType.class, Account.DEFAULT_SORT_TYPE))
+            ));
+        s.put("sortAscending", Settings.versions(
+                new V(9, new BooleanSetting(Account.DEFAULT_SORT_ASCENDING))
             ));
         s.put("showPicturesEnum", Settings.versions(
                 new V(1, new EnumSetting(Account.ShowPictures.class, Account.ShowPictures.NEVER))

@@ -35,6 +35,7 @@ import com.fsck.k9.AccountStats;
 import com.fsck.k9.K9;
 import com.fsck.k9.Preferences;
 import com.fsck.k9.R;
+import com.fsck.k9.Account.MessageFormat;
 import com.fsck.k9.controller.MessageRemovalListener;
 import com.fsck.k9.controller.MessageRetrievalListener;
 import com.fsck.k9.helper.Utility;
@@ -55,6 +56,7 @@ import com.fsck.k9.mail.internet.MimeHeader;
 import com.fsck.k9.mail.internet.MimeMessage;
 import com.fsck.k9.mail.internet.MimeMultipart;
 import com.fsck.k9.mail.internet.MimeUtility;
+import com.fsck.k9.mail.internet.MimeUtility.ViewableContainer;
 import com.fsck.k9.mail.internet.TextBody;
 import com.fsck.k9.mail.store.LockableDatabase.DbCallback;
 import com.fsck.k9.mail.store.LockableDatabase.WrappedException;
@@ -1586,23 +1588,26 @@ public class LocalStore extends Store implements Serializable {
                                                 MimeBodyPart bp = new MimeBodyPart(body, "text/plain");
                                                 mp.addBodyPart(bp);
                                             }
-                                            if (htmlContent != null) {
-                                                TextBody body = new TextBody(htmlContent);
-                                                MimeBodyPart bp = new MimeBodyPart(body, "text/html");
-                                                mp.addBodyPart(bp);
-                                            }
 
-                                            // If we have both text and html content and our MIME type
-                                            // isn't multipart/alternative, then corral them into a new
-                                            // multipart/alternative part and put that into the parent.
-                                            // If it turns out that this is the only part in the parent
-                                            // MimeMultipart, it'll get fixed below before we attach to
-                                            // the message.
-                                            if (textContent != null && htmlContent != null && !mimeType.equalsIgnoreCase("multipart/alternative")) {
-                                                MimeMultipart alternativeParts = mp;
-                                                alternativeParts.setSubType("alternative");
-                                                mp = new MimeMultipart();
-                                                mp.addBodyPart(new MimeBodyPart(alternativeParts));
+                                            if (mAccount.getMessageFormat() == MessageFormat.HTML) {
+                                                if (htmlContent != null) {
+                                                    TextBody body = new TextBody(htmlContent);
+                                                    MimeBodyPart bp = new MimeBodyPart(body, "text/html");
+                                                    mp.addBodyPart(bp);
+                                                }
+    
+                                                // If we have both text and html content and our MIME type
+                                                // isn't multipart/alternative, then corral them into a new
+                                                // multipart/alternative part and put that into the parent.
+                                                // If it turns out that this is the only part in the parent
+                                                // MimeMultipart, it'll get fixed below before we attach to
+                                                // the message.
+                                                if (textContent != null && htmlContent != null && !mimeType.equalsIgnoreCase("multipart/alternative")) {
+                                                    MimeMultipart alternativeParts = mp;
+                                                    alternativeParts.setSubType("alternative");
+                                                    mp = new MimeMultipart();
+                                                    mp.addBodyPart(new MimeBodyPart(alternativeParts));
+                                                }
                                             }
                                         } else if (mimeType != null && mimeType.equalsIgnoreCase("text/plain")) {
                                             // If it's text, add only the plain part. The MIME
@@ -1691,6 +1696,12 @@ public class LocalStore extends Store implements Serializable {
                                                                            contentDisposition,
                                                                            name, // TODO: Should use encoded word defined in RFC 2231.
                                                                            size));
+                                            } else {
+                                                bp.setHeader(MimeHeader.HEADER_CONTENT_TYPE, type);
+                                                bp.setHeader(MimeHeader.HEADER_CONTENT_DISPOSITION,
+                                                        String.format("%s;\n size=%d",
+                                                                      contentDisposition,
+                                                                      size));
                                             }
 
                                             bp.setHeader(MimeHeader.HEADER_CONTENT_ID, contentId);
@@ -1921,20 +1932,22 @@ public class LocalStore extends Store implements Serializable {
         }
 
         @Override
-        public void copyMessages(Message[] msgs, Folder folder) throws MessagingException {
+        public Map<String, String> copyMessages(Message[] msgs, Folder folder) throws MessagingException {
             if (!(folder instanceof LocalFolder)) {
                 throw new MessagingException("copyMessages called with incorrect Folder");
             }
-            ((LocalFolder) folder).appendMessages(msgs, true);
+            return ((LocalFolder) folder).appendMessages(msgs, true);
         }
 
         @Override
-        public void moveMessages(final Message[] msgs, final Folder destFolder) throws MessagingException {
+        public Map<String, String> moveMessages(final Message[] msgs, final Folder destFolder) throws MessagingException {
             if (!(destFolder instanceof LocalFolder)) {
                 throw new MessagingException("moveMessages called with non-LocalFolder");
             }
 
             final LocalFolder lDestFolder = (LocalFolder)destFolder;
+
+            final Map<String, String> uidMap = new HashMap<String, String>();
 
             try {
                 database.execute(false, new DbCallback<Void>() {
@@ -1961,7 +1974,10 @@ public class LocalStore extends Store implements Serializable {
                                     Log.d(K9.LOG_TAG, "Updating folder_id to " + lDestFolder.getId() + " for message with UID "
                                           + message.getUid() + ", id " + lMessage.getId() + " currently in folder " + getName());
 
-                                message.setUid(K9.LOCAL_UID_PREFIX + UUID.randomUUID().toString());
+                                String newUid = K9.LOCAL_UID_PREFIX + UUID.randomUUID().toString();
+                                message.setUid(newUid);
+
+                                uidMap.put(oldUID, newUid);
 
                                 db.execSQL("UPDATE messages " + "SET folder_id = ?, uid = ? " + "WHERE id = ?", new Object[] {
                                                lDestFolder.getId(),
@@ -1969,6 +1985,11 @@ public class LocalStore extends Store implements Serializable {
                                                lMessage.getId()
                                            });
 
+                                /*
+                                 * Add a placeholder message so we won't download the original
+                                 * message again if we synchronize before the remote move is
+                                 * complete.
+                                 */
                                 LocalMessage placeHolder = new LocalMessage(oldUID, LocalFolder.this);
                                 placeHolder.setFlagInternal(Flag.DELETED, true);
                                 placeHolder.setFlagInternal(Flag.SEEN, true);
@@ -1980,6 +2001,7 @@ public class LocalStore extends Store implements Serializable {
                         return null;
                     }
                 });
+                return uidMap;
             } catch (WrappedException e) {
                 throw(MessagingException) e.getCause();
             }
@@ -2025,8 +2047,8 @@ public class LocalStore extends Store implements Serializable {
          * message, retrieve the appropriate local message instance first (if it already exists).
          */
         @Override
-        public void appendMessages(Message[] messages) throws MessagingException {
-            appendMessages(messages, false);
+        public Map<String, String> appendMessages(Message[] messages) throws MessagingException {
+            return appendMessages(messages, false);
         }
 
         public void destroyMessages(final Message[] messages) throws MessagingException {
@@ -2062,10 +2084,12 @@ public class LocalStore extends Store implements Serializable {
          * message, retrieve the appropriate local message instance first (if it already exists).
          * @param messages
          * @param copy
+         * @return Map<String, String> uidMap of srcUids -> destUids
          */
-        private void appendMessages(final Message[] messages, final boolean copy) throws MessagingException {
+        private Map<String, String> appendMessages(final Message[] messages, final boolean copy) throws MessagingException {
             open(OpenMode.READ_WRITE);
             try {
+                final Map<String, String> uidMap = new HashMap<String, String>();
                 database.execute(true, new DbCallback<Void>() {
                     @Override
                     public Void doDbWork(final SQLiteDatabase db) throws WrappedException, UnavailableStorageException {
@@ -2078,11 +2102,26 @@ public class LocalStore extends Store implements Serializable {
                                 long oldMessageId = -1;
                                 String uid = message.getUid();
                                 if (uid == null || copy) {
-                                    uid = K9.LOCAL_UID_PREFIX + UUID.randomUUID().toString();
-                                    if (!copy) {
-                                        message.setUid(uid);
+                                    /*
+                                     * Create a new message in the database
+                                     */
+                                    String randomLocalUid = K9.LOCAL_UID_PREFIX +
+                                            UUID.randomUUID().toString();
+
+                                    if (copy) {
+                                        // Save mapping: source UID -> target UID
+                                        uidMap.put(uid, randomLocalUid);
+                                    } else {
+                                        // Modify the Message instance to reference the new UID
+                                        message.setUid(randomLocalUid);
                                     }
+
+                                    // The message will be saved with the newly generated UID
+                                    uid = randomLocalUid;
                                 } else {
+                                    /*
+                                     * Replace an existing message in the database
+                                     */
                                     LocalMessage oldMessage = (LocalMessage) getMessage(uid);
 
                                     if (oldMessage != null) {
@@ -2099,45 +2138,31 @@ public class LocalStore extends Store implements Serializable {
                                     deleteAttachments(message.getUid());
                                 }
 
-                                ArrayList<Part> viewables = new ArrayList<Part>();
-                                ArrayList<Part> attachments = new ArrayList<Part>();
-                                MimeUtility.collectParts(message, viewables, attachments);
+                                boolean isDraft = (message.getHeader(K9.IDENTITY_HEADER) != null);
 
-                                StringBuilder sbHtml = new StringBuilder();
-                                StringBuilder sbText = new StringBuilder();
-                                for (Part viewable : viewables) {
-                                    try {
-                                        String text = MimeUtility.getTextFromPart(viewable);
+                                List<Part> attachments;
+                                String text;
+                                String html;
+                                if (isDraft) {
+                                    // Don't modify the text/plain or text/html part of our own
+                                    // draft messages because this will cause the values stored in
+                                    // the identity header to be wrong.
+                                    ViewableContainer container =
+                                            MimeUtility.extractPartsFromDraft(message);
 
-                                        /*
-                                         * Small hack to make sure the string "null" doesn't end up
-                                         * in one of the StringBuilders.
-                                         */
-                                        if (text == null) {
-                                            text = "";
-                                        }
+                                    text = container.text;
+                                    html = container.html;
+                                    attachments = container.attachments;
+                                } else {
+                                    ViewableContainer container =
+                                            MimeUtility.extractTextAndAttachments(mApplication, message);
 
-                                        /*
-                                         * Anything with MIME type text/html will be stored as such. Anything
-                                         * else will be stored as text/plain.
-                                         */
-                                        if (viewable.getMimeType().equalsIgnoreCase("text/html")) {
-                                            sbHtml.append(text);
-                                        } else {
-                                            sbText.append(text);
-                                        }
-                                    } catch (Exception e) {
-                                        throw new MessagingException("Unable to get text for message part", e);
-                                    }
+                                    attachments = container.attachments;
+                                    text = container.text;
+                                    html = HtmlConverter.convertEmoji2Img(container.html);
                                 }
 
-                                String text = sbText.toString();
-                                String html = markupContent(text, sbHtml.toString());
                                 String preview = calculateContentPreview(text);
-                                // If we couldn't generate a reasonable preview from the text part, try doing it with the HTML part.
-                                if (preview == null || preview.length() == 0) {
-                                    preview = calculateContentPreview(HtmlConverter.htmlToText(html));
-                                }
 
                                 try {
                                     ContentValues cv = new ContentValues();
@@ -2193,6 +2218,7 @@ public class LocalStore extends Store implements Serializable {
                         return null;
                     }
                 });
+                return uidMap;
             } catch (WrappedException e) {
                 throw(MessagingException) e.getCause();
             }
@@ -2215,49 +2241,17 @@ public class LocalStore extends Store implements Serializable {
                     @Override
                     public Void doDbWork(final SQLiteDatabase db) throws WrappedException, UnavailableStorageException {
                         try {
-                            ArrayList<Part> viewables = new ArrayList<Part>();
-                            ArrayList<Part> attachments = new ArrayList<Part>();
-
                             message.buildMimeRepresentation();
 
-                            MimeUtility.collectParts(message, viewables, attachments);
+                            ViewableContainer container =
+                                    MimeUtility.extractTextAndAttachments(mApplication, message);
 
-                            StringBuilder sbHtml = new StringBuilder();
-                            StringBuilder sbText = new StringBuilder();
-                            for (int i = 0, count = viewables.size(); i < count; i++) {
-                                Part viewable = viewables.get(i);
-                                try {
-                                    String text = MimeUtility.getTextFromPart(viewable);
+                            List<Part> attachments = container.attachments;
+                            String text = container.text;
+                            String html = HtmlConverter.convertEmoji2Img(container.html);
 
-                                    /*
-                                     * Small hack to make sure the string "null" doesn't end up
-                                     * in one of the StringBuilders.
-                                     */
-                                    if (text == null) {
-                                        text = "";
-                                    }
-
-                                    /*
-                                     * Anything with MIME type text/html will be stored as such. Anything
-                                     * else will be stored as text/plain.
-                                     */
-                                    if (viewable.getMimeType().equalsIgnoreCase("text/html")) {
-                                        sbHtml.append(text);
-                                    } else {
-                                        sbText.append(text);
-                                    }
-                                } catch (Exception e) {
-                                    throw new MessagingException("Unable to get text for message part", e);
-                                }
-                            }
-
-                            String text = sbText.toString();
-                            String html = markupContent(text, sbHtml.toString());
                             String preview = calculateContentPreview(text);
-                            // If we couldn't generate a reasonable preview from the text part, try doing it with the HTML part.
-                            if (preview == null || preview.length() == 0) {
-                                preview = calculateContentPreview(HtmlConverter.htmlToText(html));
-                            }
+
                             try {
                                 db.execSQL("UPDATE messages SET "
                                            + "uid = ?, subject = ?, sender_list = ?, date = ?, flags = ?, "
@@ -2391,6 +2385,18 @@ public class LocalStore extends Store implements Serializable {
                                 Body body = attachment.getBody();
                                 if (body instanceof LocalAttachmentBody) {
                                     contentUri = ((LocalAttachmentBody) body).getContentUri();
+                                } else if (body instanceof Message) {
+                                    // It's a message, so use Message.writeTo() to output the
+                                    // message including all children.
+                                    Message message = (Message) body;
+                                    tempAttachmentFile = File.createTempFile("att", null, attachmentDirectory);
+                                    FileOutputStream out = new FileOutputStream(tempAttachmentFile);
+                                    try {
+                                        message.writeTo(out);
+                                    } finally {
+                                        out.close();
+                                    }
+                                    size = (int) (tempAttachmentFile.length() & 0x7FFFFFFFL);
                                 } else {
                                     /*
                                      * If the attachment has a body we're expected to save it into the local store
@@ -2788,6 +2794,8 @@ public class LocalStore extends Store implements Serializable {
             text = text.replaceAll("(?m)^On .*wrote.?$", "");
             // Remove a more generic quote header from the preview
             text = text.replaceAll("(?m)^.*\\w+:$", "");
+            // Remove horizontal rules.
+            text = text.replaceAll("\\s*([-=_]{30,}+)\\s*", " ");
 
             // URLs in the preview should just be shown as "..." - They're not
             // clickable and they usually overwhelm the preview
@@ -2796,6 +2804,9 @@ public class LocalStore extends Store implements Serializable {
             text = text.replaceAll("(\\r|\\n)+", " ");
             // Collapse whitespace in the preview
             text = text.replaceAll("\\s+", " ");
+            // Remove any whitespace at the beginning and end of the string.
+            text = text.trim();
+
             if (text.length() <= 512) {
                 return text;
             } else {
@@ -2803,17 +2814,6 @@ public class LocalStore extends Store implements Serializable {
             }
 
         }
-
-        public String markupContent(String text, String html) {
-            if (text.length() > 0 && html.length() == 0) {
-                html = HtmlConverter.textToHtml(text);
-            }
-
-            html = HtmlConverter.convertEmoji2Img(html);
-
-            return html;
-        }
-
 
         @Override
         public boolean isInTopGroup() {
